@@ -48,7 +48,7 @@ def main():
 
     # Cleaning and removing temporary dirs and data if --clean flag is set
     if args.clean:
-        print("Script executed with option --clean. All temp files and folders will be removed:\n")
+        print("Script executed with an option --clean. All temp files and folders will be removed:\n")
         temp_data = [mol_directory, csv_output_folder, processed_dir, merged_dir]
         for folder in temp_data:
             if os.path.exists(folder):

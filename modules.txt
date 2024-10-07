@@ -1,7 +1,0 @@
-pip install rdkit pandas
-
-Do tego zainstalowana Java SDK, oraz OpenBabel z dodan¹ œcie¿k¹ do PATH
-
-Przyk³ad u¿ycia skryptu:
-
-python Demiurge.py --csv_path test.csv --predictor 1H --label_column 3 --clean

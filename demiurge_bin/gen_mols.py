@@ -34,6 +34,8 @@ def generate_mol_files(csv_path):
         
         file_count = 0
         
+        print("\nGenerating *.mol files ...")
+        
         # Iterate through each row of the CSV file
         for index, row in data.iterrows():
             try:
