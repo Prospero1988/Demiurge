@@ -1,23 +1,30 @@
+# predictor.py
+
 import os
 import subprocess
 import argparse
 
 def run_java_batch_processor(mol_directory, predictor):
     """
-    Kompiluje i uruchamia BatchProcessor1H z wykorzystaniem Javy na wskazanym folderze mol_directory.
-    
+    Compiles and runs the Java BatchProcessor for NMR spectrum prediction on the specified directory containing .mol files.
+
     Parameters:
-    mol_directory (str): Ścieżka do katalogu wejściowego z plikami .mol.
-    csv_output_folder (str): Ścieżka do katalogu wyjściowego dla plików CSV.
+    - mol_directory (str): Path to the input directory containing .mol files.
+    - predictor (str): Type of NMR predictor ('1H' or '13C') to use.
+
+    Returns:
+    - csv_output_folder (str): Path to the directory where the predicted CSV files are stored.
     """
-    # Ustal ścieżkę do podkatalogu "mols" względem głównego skryptu
+    
+    # Define the output directory path for the predicted spectra CSV files based on the predictor type
     csv_output_folder = os.path.join(os.getcwd(), f"predicted_spectra_{predictor}")
     
-    # Sprawdź, czy katalog "csv_output_folder" istnieje, jeśli nie, to go utwórz
+    # Check if the output directory exists; if not, create it
     if not os.path.exists(csv_output_folder):
         os.makedirs(csv_output_folder)
         print(f"\nCreated directory: {csv_output_folder}")
     
+    # Set the paths for different predictor types and the corresponding Java files and classes
     if predictor == "1H":
         predictor_jar = ".\\predictor\\predictorh.jar"
         cdk_jar = ".\\predictor\\cdk-2.9.jar"
@@ -29,13 +36,11 @@ def run_java_batch_processor(mol_directory, predictor):
         batch_processor_java = ".\\predictor\\BatchProcessor13C.java"
         batch_processor_class = "predictor.BatchProcessor13C"
 
-    # Kompilacja pliku Java z -d, aby zapisać plik .class w odpowiedniej lokalizacji
-    # Kompilacja pliku Java z dodatkowymi opcjami, aby wyciszyć ostrzeżenia
+    # Compile the Java file using javac with specific options and classpath
     compile_command = f'javac -classpath "{predictor_jar};{cdk_jar};." -d . -Xlint:-options -Xlint:deprecation -proc:none {batch_processor_java}'
-
     
     try:
-        # Uruchomienie polecenia kompilacji
+        # Execute the compilation command
         subprocess.run(compile_command, shell=True, check=True)
         print(f"\nSuccessfully compiled {batch_processor_class}.")
         print(f"\nSpectra prediction in progress...\n")
@@ -43,13 +48,12 @@ def run_java_batch_processor(mol_directory, predictor):
         print(f"Failed to compile {batch_processor_java}: {e}")
         return
 
-    # Dodanie ścieżki "./predictor" do classpath w run_command
+    # Run the compiled Java class with the specified classpath and parameters
     run_command = f'java -Xmx1g -classpath "{predictor_jar};{cdk_jar};.;./predictor" {batch_processor_class} "{mol_directory}" "{csv_output_folder}" "Dimethylsulphoxide-D6 (DMSO-D6, C2D6SO)"'
     
     try:
-        # Uruchomienie programu Java
+        # Execute the Java program
         subprocess.run(run_command, shell=True, check=True)
-        #print(f"Successfully ran {batch_processor_class} with input folder: {mol_directory} and output folder: {csv_output_folder}.")
     except subprocess.CalledProcessError as e:
         print(f"Failed to run {batch_processor_class}: {e}")
 

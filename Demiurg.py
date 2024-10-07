@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Oct  7 11:09:08 2024
+Created on Mon Oct  7 20:09:08 2024
 
-@author: aleniak
+@author: arkadiusz.leniak@gmal.com
 """
 # import of general libraries
 import argparse
@@ -11,7 +11,6 @@ import os
 
 # import executable modules for this script
 from demiurge_bin.gen_mols import generate_mol_files
-from demiurge_bin.flat_mols import flatten_molecules
 from demiurge_bin.predictor import run_java_batch_processor
 from demiurge_bin.bucket import bucket
 from demiurge_bin.merger import merger
@@ -32,9 +31,6 @@ def main():
     # Generate *.mol files from SMILES
     mol_directory = generate_mol_files(args.csv_path)
 
-    # Flatten 3D coordinates in *.mol files to 2D with preserved stereochemistry
-    flatten_molecules(mol_directory)
-
     # Predict NMR spectra and save as *.mol files
     csv_output_folder = run_java_batch_processor(mol_directory, args.predictor)
 
@@ -52,6 +48,7 @@ def main():
 
     # Cleaning and removing temporary dirs and data if --clean flag is set
     if args.clean:
+        print("Script executed with option --clean. All temp files and folders will be removed:\n")
         temp_data = [mol_directory, csv_output_folder, processed_dir, merged_dir]
         for folder in temp_data:
             if os.path.exists(folder):
@@ -62,3 +59,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+print("\nEND OF THE SCRIPT\n")
