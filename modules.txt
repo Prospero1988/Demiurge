@@ -1,0 +1,3 @@
+pip install rdkit pandas
+
+Do tego zainstalowana Java SDK, oraz OpenBabel z dodan¹ œcie¿k¹ do PATH
