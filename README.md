@@ -22,8 +22,8 @@ Ensure the following software and libraries are installed:
    - `rdkit`
    - `pandas`
    - `numpy`
-   - 'art'
-   - 'tqdm'
+   - `arty`
+   - `tqdm`
 
    Install the required Python packages using:
 
