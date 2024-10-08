@@ -1,3 +1,5 @@
+#csv_checker.py
+
 import pandas as pd
 import csv
 import os
@@ -5,6 +7,7 @@ import os
 def verify_csv(file_path):
     """
     Function to verify and modify a CSV file by handling separators, decimal points, and column structure.
+    Additionally, it cleans up the first column (e.g., molecule names) by removing problematic characters.
 
     Parameters:
     - file_path: The path to the input CSV file to be verified.
@@ -49,10 +52,23 @@ def verify_csv(file_path):
         # Step 4: Replace decimal commas with decimal dots if the separator is a semicolon
         if separator == ';':
             print("\nSeparator is semicolon. Checking for decimal commas...")
-            # Replace commas used as decimal points with dots in all string entries
-            if df.applymap(lambda x: isinstance(x, str) and ',' in x).any().any():
+            
+            # Replace commas used as decimal points only in numeric cells (not entire strings)
+            # Check if cells are numeric and contain commas and do not contain dots
+            def is_comma_decimal(cell):
+                try:
+                    # Check if the cell is a number that uses comma as decimal point
+                    # Convert cell to string to handle cases where the cell is a number type
+                    cell_str = str(cell)
+                    # Return True if cell contains comma, does not contain dot, and is numeric
+                    return ',' in cell_str and '.' not in cell_str and float(cell_str.replace(',', '.'))
+                except ValueError:
+                    return False
+
+            # Apply function to detect numeric cells with commas
+            if df.applymap(is_comma_decimal).any().any():
                 print("\nDetected commas used as decimal points. Replacing with dots...")
-                df = df.applymap(lambda x: x.replace(',', '.') if isinstance(x, str) else x)
+                df = df.applymap(lambda x: x.replace(',', '.') if isinstance(x, str) and is_comma_decimal(x) else x)
                 print("\nReplaced decimal commas with dots.")
             else:
                 print("\nNo decimal commas detected.")
@@ -77,12 +93,34 @@ def verify_csv(file_path):
             df.to_csv(verified_file_path, index=False, sep=separator)  # Save CSV with the original separator
             print(f"\nCSV file saved with original separator at: {verified_file_path}")
 
+        # Step 7: Clean up the first column (e.g., molecule names)
+        print("\nCleaning up the first column (molecule names)...")
+
+        def clean_molecule_name(name):
+            # Remove white spaces and unwanted characters
+            if isinstance(name, str):
+                # Remove leading and trailing whitespace
+                name = name.strip()
+                # Replace any whitespace inside the name (tabs, spaces)
+                name = name.replace(" ", "").replace("\t", "")
+                # Replace problematic characters with underscores
+                for char in ['*', '&', '^', '%', '$', '@', '!', '~', '#', '(', ')', '[', ']', '{', '}', '?', '/', '\\']:
+                    name = name.replace(char, "_")
+                return name
+            return name
+
+        # Apply the cleaning function to the first column
+        df.iloc[:, 0] = df.iloc[:, 0].apply(clean_molecule_name)
+        print("\nCleaned up molecule names in the first column.")
+
+        # Save the cleaned file again
+        df.to_csv(verified_file_path, index=False, sep=',')
+        print(f"\nCSV file saved after cleaning the first column at: {verified_file_path}")
+
     except Exception as e:
         print(f"\nError processing CSV file: {e}")
         return None
 
-    # Step 7: Return the path to the newly saved, verified file
+    # Step 8: Return the path to the newly saved, verified file
     print("\nVerification and modifications completed successfully.")
     return verified_file_path
-
-

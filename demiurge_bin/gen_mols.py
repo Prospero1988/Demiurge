@@ -8,7 +8,6 @@ from rdkit.Chem import AllChem
 def generate_mol_files(csv_path):
     """
     Function to generate .mol files from SMILES strings provided in a CSV file.
-    Attempts to fix invalid SMILES structures using RDKit functions.
 
     Parameters:
     - csv_path: Path to the input CSV file containing 'MOLECULE_NAME' and 'SMILES' columns.
@@ -45,36 +44,17 @@ def generate_mol_files(csv_path):
                 
                 # Generate the molecule from the SMILES string
                 mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    raise ValueError(f"Invalid SMILES string: {smiles}")
                 
-                # If the molecule is invalid, try to sanitize and kekulize the molecule
-                if mol is None:
-                    print(f"Invalid SMILES string at row {index}: {smiles}. Trying to fix...")
-                    mol = Chem.MolFromSmiles(smiles, sanitize=False)
-                    if mol:
-                        try:
-                            # Try sanitizing the molecule
-                            Chem.SanitizeMol(mol)
-                            print(f"Successfully sanitized molecule at row {index}.")
-                        except:
-                            print(f"Sanitization failed for molecule at row {index}. Attempting kekulization...")
-                            try:
-                                Chem.Kekulize(mol, clearAromaticFlags=True)
-                                print(f"Successfully kekulized molecule at row {index}.")
-                            except Exception as kek_error:
-                                print(f"Kekulization failed for molecule at row {index}: {kek_error}")
-                                continue
-
-                if mol is None:
-                    raise ValueError(f"Failed to generate molecule from SMILES: {smiles}")
-
                 # Add hydrogen atoms to the molecule
                 mol = Chem.AddHs(mol)
                 
                 # Generate 3D coordinates for the molecule
-                AllChem.EmbedMolecule(mol, randomSeed=42)  # EmbedMolecule can fail randomly, so use a seed
+                AllChem.EmbedMolecule(mol)
                 
-                # Optimize the 3D geometry
-                AllChem.UFFOptimizeMolecule(mol)
+                # Optionally, optimize the molecule in 2D
+                AllChem.Compute2DCoords(mol)
                 
                 # Save the molecule to a .mol file in the "mols" subdirectory
                 mol_file_path = os.path.join(mols_directory, f"{name}.mol")
@@ -98,7 +78,3 @@ def generate_mol_files(csv_path):
         print(f"An unexpected error occurred: {e}")
         
     return mols_directory
-
-# Example usage:
-# csv_file_path = "path_to_your_smiles_file.csv"
-# generate_mol_files(csv_file_path)
