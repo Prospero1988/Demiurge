@@ -128,7 +128,14 @@ def main():
             )
             temp_data = [
                 mol_directory, csv_output_folder, processed_dir, merged_dir
-            ]
+                ]
+            
+            if os.path.exists(verified_csv_path):
+                os.remove(verified_csv_path)
+                print(f"The file '{verified_csv_path}' has been deleted.")
+            else:
+                print(f"The file '{verified_csv_path}' does not exist.")
+            
             for folder in temp_data:
                 if os.path.exists(folder):
                     shutil.rmtree(folder)
