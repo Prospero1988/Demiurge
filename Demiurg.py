@@ -10,6 +10,7 @@ import shutil
 import os
 
 # import executable modules for this script
+from demiurge_bin.csv_checker import verify_csv
 from demiurge_bin.gen_mols import generate_mol_files
 from demiurge_bin.predictor import run_java_batch_processor
 from demiurge_bin.bucket import bucket
@@ -28,8 +29,11 @@ def main():
     # Parse the arguments
     args = parser.parse_args()
 
+    #Verify CSV input file, correct problems
+    verified_csv_path = verify_csv(args.csv_path)
+
     # Generate *.mol files from SMILES
-    mol_directory = generate_mol_files(args.csv_path)
+    mol_directory = generate_mol_files(verified_csv_path)
 
     # Predict NMR spectra and save as *.mol files
     csv_output_folder = run_java_batch_processor(mol_directory, args.predictor)
