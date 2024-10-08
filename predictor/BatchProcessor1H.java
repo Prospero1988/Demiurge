@@ -4,53 +4,81 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.FileReader;
+import java.io.BufferedReader;
 import java.util.Locale;
 
-// Zaktualizowane importy
 import org.openscience.cdk.DefaultChemObjectBuilder;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
-import org.openscience.cdk.io.MDLV2000Reader; // Nowa klasa do odczytu plików MOL
+import org.openscience.cdk.io.MDLV2000Reader;
+import org.openscience.cdk.io.MDLV3000Reader;
 import org.openscience.cdk.aromaticity.Aromaticity;
 import org.openscience.cdk.aromaticity.ElectronDonation;
 import org.openscience.cdk.graph.Cycles;
 import org.openscience.nmrshiftdb.PredictionTool;
 import org.openscience.nmrshiftdb.util.AtomUtils;
 
+/**
+ * The BatchProcessor1H class processes a batch of .mol files to predict 1H NMR chemical shifts.
+ * It reads molecular files, applies chemical property detection, and writes the results to CSV files.
+ */
 public class BatchProcessor1H {
 
+    // Counter to keep track of the number of processed .mol files.
     private static int processedFileCount = 0;
 
-    private static void processMolFile(File molFile, String csvFilePath, String solvent, boolean use3d, int counter) {
+    /**
+     * Processes a single .mol file to predict 1H NMR shifts and saves the results to a CSV file.
+     * 
+     * @param molFile The .mol file to be processed.
+     * @param csvFilePath The file path where the CSV file will be saved.
+     * @param solvent The solvent used for prediction. Default is "Unreported".
+     * @param use3d A flag indicating whether to use 3D molecular data for the prediction.
+     */
+    private static void processMolFile(File molFile, String csvFilePath, String solvent, boolean use3d) {
         try {
-            // Zmodyfikowany komunikat z licznikiem
-            System.out.println(counter + ". Processing file: " + molFile.getName());
+            // Determine whether molFile is V2000 or V3000
+            BufferedReader br = new BufferedReader(new FileReader(molFile));
+            br.readLine(); // skip line1
+            br.readLine(); // skip line2
+            br.readLine(); // skip line3
+            String line4 = br.readLine();
+            br.close();
 
-            // Użycie nowego czytnika plików .mol
-            MDLV2000Reader mdlreader = new MDLV2000Reader(new FileReader(molFile));
-            IAtomContainer mol = (IAtomContainer) mdlreader.read(DefaultChemObjectBuilder.getInstance().newInstance(IAtomContainer.class));
+            IAtomContainer mol = null;
 
-            // Dodanie atomów wodoru
+            if (line4 != null && line4.contains("V3000")) {
+                // Use MDLV3000Reader
+                MDLV3000Reader mdlreader3000 = new MDLV3000Reader(new FileReader(molFile));
+                mol = (IAtomContainer) mdlreader3000.read(DefaultChemObjectBuilder.getInstance().newInstance(IAtomContainer.class));
+            } else {
+                // Use MDLV2000Reader
+                MDLV2000Reader mdlreader = new MDLV2000Reader(new FileReader(molFile));
+                mol = (IAtomContainer) mdlreader.read(DefaultChemObjectBuilder.getInstance().newInstance(IAtomContainer.class));
+            }
+
+            // Add hydrogen atoms to the molecular structure.
             AtomUtils.addAndPlaceHydrogens(mol);
 
-            // Nowa metoda detekcji aromatyczności
+            // Apply aromaticity detection to the molecule.
             Aromaticity aromaticity = new Aromaticity(ElectronDonation.cdk(), Cycles.cdkAromaticSet());
             aromaticity.apply(mol);
 
-            // Uzyskanie predyktora
+            // Initialize the NMRShiftDB prediction tool.
             PredictionTool predictor = new PredictionTool();
 
-            // Przygotowanie do zapisu do pliku CSV
+            // Prepare to write the prediction results to a CSV file.
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFilePath))) {
-                // writer.write("mean\n"); // Możesz dodać nagłówek, jeśli potrzebujesz
-
-                // Przetwarzanie atomów
+                // Iterate over all atoms in the molecule.
                 for (int i = 0; i < mol.getAtomCount(); i++) {
                     IAtom curAtom = mol.getAtom(i);
                     float[] result = null;
 
-                    if (curAtom.getAtomicNumber() == 1) { // dla wodoru 1, dla wegla 6
+                    // If the current atom is a hydrogen atom (atomic number 1), perform prediction.
+                    if (curAtom.getAtomicNumber() == 1) {
                         result = predictor.predict(mol, curAtom, use3d, solvent);
+                        
+                        // Write the predicted NMR shift value to the CSV file if a result is obtained.
                         if (result != null) {
                             writer.write(String.format(Locale.US, "%.2f\n", result[1]));
                         }
@@ -58,54 +86,96 @@ public class BatchProcessor1H {
                 }
             }
 
-            // Zwiększ licznik przetworzonych plików
+            // Increment the count of processed .mol files.
             processedFileCount++;
         } catch (Exception e) {
-            System.err.println("Error processing file " + molFile.getName() + ": " + e.getMessage());
+            // Print error message if file processing fails.
+            System.err.println("Error while processing file " + molFile.getName() + ": " + e.getMessage());
             e.printStackTrace();
         }
     }
 
+    /**
+     * Main method for batch processing .mol files.
+     * 
+     * @param args Command-line arguments: 
+     *             args[0] - input folder containing .mol files,
+     *             args[1] - output folder for CSV files,
+     *             args[2] (optional) - solvent for prediction,
+     *             args[3] (optional) - "no3d" flag to disable 3D data usage.
+     */
     public static void main(String[] args) {
+        // Check if the required arguments (input and output folders) are provided.
         if (args.length < 2) {
             System.err.println("Usage: java BatchProcessor1H <inputFolder> <outputFolder> [solvent] [no3d]");
             System.exit(1);
         }
 
+        // Parse the input and output folder paths.
         File inputFolder = new File(args[0]);
         File outputFolder = new File(args[1]);
-        String solvent = "Unreported";
-        boolean use3d = true;
+        String solvent = "Unreported"; // Default solvent if not specified.
+        boolean use3d = true; // Default to using 3D information.
 
-        // Sprawdzenie, czy argumenty są poprawne
+        // Validate that input and output folders are directories.
         if (!inputFolder.isDirectory() || !outputFolder.isDirectory()) {
             System.err.println("Input or output folder is not a directory.");
             System.exit(1);
         }
 
-        // Obsługa rozpuszczalnika
+        // Parse the optional solvent argument.
         if (args.length >= 3) {
             solvent = args[2];
         }
 
-        // Obsługa opcji no3d
+        // Check for the "no3d" flag to disable 3D data usage.
         if (args.length >= 4 && args[3].equalsIgnoreCase("no3d")) {
             use3d = false;
         }
 
+        // List all .mol files in the input folder.
         File[] molFiles = inputFolder.listFiles((dir, name) -> name.endsWith(".mol"));
         if (molFiles != null) {
-            int counter = 1; // Inicjalizacja licznika plików
+            int totalFiles = molFiles.length; // Total number of .mol files to be processed.
+            int counter = 1; // Counter to keep track of the number of processed files.
+            int previousLineLength = 0; // Used to maintain the length of the progress message.
+
+            // Iterate over each .mol file in the input folder.
             for (File molFile : molFiles) {
+                // Construct the file path for the output CSV file.
                 String csvFilePath = new File(outputFolder, molFile.getName().replace(".mol", ".csv")).getPath();
-                processMolFile(molFile, csvFilePath, solvent, use3d, counter);
-                counter++; // Zwiększenie licznika po każdym przetworzonym pliku
+
+                // Build and print the progress message.
+                String message = "Processing " + counter + "/" + totalFiles + ": " + molFile.getName();
+                int messageLength = message.length();
+                
+                // Adjust message length by adding padding if the current message is shorter than the previous one.
+                if (messageLength < previousLineLength) {
+                    int paddingLength = previousLineLength - messageLength;
+                    String padding = new String(new char[paddingLength]).replace('\0', ' ');
+                    message += padding;
+                }
+
+                // Update the previousLineLength for the next iteration.
+                previousLineLength = message.length();
+
+                // Print the progress message, overwriting the previous line.
+                System.out.print("\r" + message);
+                System.out.flush();
+
+                // Process the current .mol file.
+                processMolFile(molFile, csvFilePath, solvent, use3d);
+                counter++; // Increment the counter after processing each file.
             }
 
-            // Wyświetlenie liczby przetworzonych plików
-            System.out.println("\nNumber of .mol files processed into 1H NMR predictions: " + processedFileCount);
+            // Move to a new line after processing all files.
+            System.out.println();
+
+            // Display the total number of processed .mol files.
+            System.out.println("\nTotal number of .mol files processed for 1H NMR prediction: " + processedFileCount);
         } else {
-            System.err.println("No .mol files found in the input directory.");
+            // Print an error message if no .mol files are found in the input folder.
+            System.err.println("No .mol files found in the input folder.");
         }
     }
 }
