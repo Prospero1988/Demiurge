@@ -41,20 +41,15 @@ def main():
     """
     Main function to execute the NMR data processing pipeline.
     """
-    # Open the log file in write mode
-    log_file = open('demiurge.log', 'w', encoding='utf-8')
-    
+    # Open the log file in append mode
+    log_file = open('demiurge.log', 'a', encoding='utf-8')
+
     # Redirect sys.stdout and sys.stderr to the Tee instance
     sys.stdout = Tee(sys.__stdout__, log_file)
     sys.stderr = Tee(sys.__stderr__, log_file)
-    
+
     try:
-        # Clear the console and display the ASCII art logo
-        subprocess.call('cls' if os.name == 'nt' else 'clear', shell=True)
-        print('')
-        ascii_art = text2art("DEMIURGE")
-        print(ascii_art)
-    
+
         # Define the argument parser for command-line options
         parser = argparse.ArgumentParser(
             description="A comprehensive software pipeline to create "
@@ -86,10 +81,22 @@ def main():
             help="If set, the script deletes all intermediate temporary "
                  "files after execution."
         )
-    
+
         # Parse the command-line arguments
         args = parser.parse_args()
     
+        # Clear the console and display the ASCII art logo
+        subprocess.call('cls' if os.name == 'nt' else 'clear', shell=True)
+        
+        print('')
+        ascii_art_demiurge = text2art("DEMIURGE")
+        predictor = args.predictor
+        ascii_art_predictor = text2art(predictor)
+        art_width = len(ascii_art_demiurge.split('\n')[0])
+        centered_predictor_lines = [line.center(art_width) for line in ascii_art_predictor.split('\n')]
+        final_art = f"{ascii_art_demiurge}\n" + "\n".join(centered_predictor_lines)
+        print(final_art)                   
+
         # Step 1: Verify the CSV input file and correct any issues
         verified_csv_path = verify_csv(args.csv_path)
     

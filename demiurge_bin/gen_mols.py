@@ -44,7 +44,7 @@ def generate_mol_files(csv_path):
                 AllChem.EmbedMolecule(mol, randomSeed=0xf00d)
                 
                 # Optimize the molecule with at least 2000 cycles and convergence threshold
-                AllChem.UFFOptimizeMolecule(mol, maxIters=2000, convergenceThreshold=1e-3)
+                # AllChem.UFFOptimizeMolecule(mol, maxIters=2000, vdwThresh=15.0, confId=-1, ignoreInterfragInteractions=True)
                 
                 AllChem.Compute2DCoords(mol)
 

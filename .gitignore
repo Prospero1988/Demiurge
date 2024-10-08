@@ -163,6 +163,6 @@ cython_debug/
 generated_ML_inputs/
 demiurge.log
 mols/
-predicted_1H_spectra/
-predicted_13C_spectra/
+predicted_spectra_1H/
+predicted_spectra_13C/
 merged/
