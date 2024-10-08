@@ -47,8 +47,8 @@ def labeler(csv_path, output_path, label_column, merged_dir):
 
         labeled.to_csv(file_name, index=False)
         print(f'\nColumn {label_column_name} successfully copied'
-              'from {os.path.basename(csv_path)}'
-              f"to {os.path.basename(output_path)}.")
+              f' from {os.path.basename(csv_path)}'
+              f" to {os.path.basename(output_path)}.")
 
     except Exception as e:
         print(f"Error occurred: {e}")

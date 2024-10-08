@@ -1,11 +1,8 @@
-# gen_mols.py
-
 import os
 import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from tqdm import tqdm
-
 
 def generate_mol_files(csv_path):
     """
@@ -28,15 +25,14 @@ def generate_mol_files(csv_path):
     try:
         data = pd.read_csv(csv_path)
         if 'MOLECULE_NAME' not in data.columns or 'SMILES' not in data.columns:
-            raise ValueError("CSV must contain 'MOLECULE_NAME' and"
-                             "'SMILES' columns.")
+            raise ValueError("CSV must contain 'MOLECULE_NAME' and 'SMILES' columns.")
 
-        file_count = 0
+        file_count = 0  # Counter for successfully generated .mol files
+        error_file_count = 0  # Counter for .mol files with errors
+
         print("\nGenerating *.mol files ...")
 
-        for index, row in tqdm(data.iterrows(), total=len(data),
-                               bar_format="Generating structures: "
-                                          "{n_fmt}/{total_fmt}"):
+        for index, row in tqdm(data.iterrows(), total=len(data), bar_format="Generating structures: {n_fmt}/{total_fmt}"):
             try:
                 name = row['MOLECULE_NAME']
                 smiles = row['SMILES']
@@ -46,19 +42,31 @@ def generate_mol_files(csv_path):
 
                 mol = Chem.AddHs(mol)
                 AllChem.EmbedMolecule(mol, randomSeed=0xf00d)
+                
+                # Optimize the molecule with at least 2000 cycles and convergence threshold
+                AllChem.UFFOptimizeMolecule(mol, maxIters=2000, convergenceThreshold=1e-3)
+                
                 AllChem.Compute2DCoords(mol)
 
                 mol_file_path = os.path.join(mols_directory, f"{name}.mol")
                 with open(mol_file_path, 'w') as f:
-                    f.write(Chem.MolToMolBlock(mol))
+                    f.write(Chem.MolToMolBlock(mol, forceV3000=True))
 
-                file_count += 1
+                file_count += 1  # Increment counter for successful files
 
             except Exception as e:
+                # Save the molecule even if there was error during processing
+                mol_file_path = os.path.join(mols_directory, f"{row['MOLECULE_NAME']}_error.mol")
+                with open(mol_file_path, 'w') as f:
+                    if mol:
+                        f.write(Chem.MolToMolBlock(mol, forceV3000=True))
+                    else:
+                        f.write(f"{name} could not be processed due to an error: {e}")
                 tqdm.write(f"Error processing row {index + 1} ({name}): {e}")
+                error_file_count += 1  # Increment counter for error files
 
-        print(f"\nGenerated {file_count} .mol files in the folder"
-              "'{mols_directory}'.")
+        print(f"\nGenerated {file_count} .mol files in the folder '{mols_directory}'.")
+        print(f"Generated {error_file_count} .mol files with errors (saved as *_error.mol).")
 
     except FileNotFoundError:
         print(f"File not found: {csv_path}")
