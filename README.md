@@ -22,11 +22,13 @@ Ensure the following software and libraries are installed:
    - `rdkit`
    - `pandas`
    - `numpy`
+   - `arty`
+   - `tqdm`
 
    Install the required Python packages using:
 
    ```bash
-   pip install rdkit pandas numpy
+   pip install rdkit pandas numpy tqdm art
    ```
 
 2. **Java SDK**:
