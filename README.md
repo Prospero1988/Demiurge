@@ -30,7 +30,7 @@ Ensure the following software and libraries are installed:
    ```bash
    pip install rdkit pandas numpy tqdm art
    ```
-   or predefined Python script, which will check if the necessary libraries are installed. If not it will install them.:
+   or predefined Python script, which will check if the necessary libraries are installed. If not it will install them:
 
    ```bash
    python install_modules.py
