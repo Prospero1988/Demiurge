@@ -52,19 +52,28 @@ cd nmr-ml-input-generator
 
 The project is organized into the following directories and files:
 
-- `demiurge_bin/`
-  - `gen_mols.py`: Generates `.mol` files from SMILES strings.
-  - `predictor.py`: Runs the Java batch processor for NMR spectrum prediction.
-  - `bucket.py`: Converts spectra into a uniform bucketized matrix.
-  - `merger.py`: Merges bucketized spectra into a single file.
-  - `labeler.py`: Adds labels to the merged spectra file.
-  - `custom_header.py`: Adds custom headers to the final merged dataset.
-- `predictor/`
-  - `BatchProcessor1H.java`: Java class for 1H NMR spectrum prediction.
-  - `BatchProcessor13C.java`: Java class for 13C NMR spectrum prediction.
-  - `predictorh.jar`: JAR file for 1H NMR spectrum prediction [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
-  - `predictorc.jar`: JAR file for 13C NMR spectrum prediction [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
-  - `cdk-2.9.jar`: CDK library required for spectrum prediction.
+```
+demiurge/
+│
+├── demiurge.py                    # Main script for executing the pipeline
+├── input_example.csv              # Example of the input file
+├── install_modules.py             # Installs required Python packages
+├── predictor/
+│   ├── predictorh.jar             # Java-based predictor for 1H spectra [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
+│   ├── predictor13C.jar           # Java-based predictor for 13C spectra [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
+│   ├── cdk-2.9.jar                # CDK library required for spectrum prediction.
+│   ├── BatchProcessor1H.java      # Java batch processor for 1H spectra
+│   └── BatchProcessor13C.java     # Java batch processor for 13C spectra
+├── logD_predictor_bin/            # Directory containing helper modules
+│   ├── csv_checker.py             # Verifies and preprocesses CSV files
+│   ├── gen_mols.py                # Generates .mol files from SMILES strings
+│   ├── bucket.py                  # Buckets NMR spectra
+│   ├── merger.py                  # Merges bucketed spectra CSVs
+|   ├── labeler.py                 # Adds labels to the merged spectra file.
+│   ├── custom_header.py           # Adds custom headers to the final dataset
+│   └── model_query.py             # Queries machine learning models
+└── README.md                      # Project documentation (this file)
+```
 
 ### Usage
 
