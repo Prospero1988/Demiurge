@@ -6,7 +6,7 @@ This project provides a comprehensive pipeline for generating machine learning i
 
 ### Features
 
-- **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as `.mol` files using RDKit.
+- **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
 - **NMR Spectrum Prediction**: Predicts NMR spectra for each molecule using a custom Java-based [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) predictor.
 - **Bucketization**: Converts predicted NMR spectra into a uniform matrix using a bucketing technique.
 - **Data Merging**: Merges the bucketized spectra with property labels to form a consolidated dataset.
