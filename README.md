@@ -33,6 +33,8 @@ The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://so
 
 ### Requirements
 
+**Important**: The script was tested under **Windows 10** using **PowerShell** and works reliably in this environment on **Python 3.11.4**. It has **not** been tested on Linux or other operating systems.
+
 Ensure the following software and libraries are installed:
 
 1. **Python Libraries**:
