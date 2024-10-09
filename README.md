@@ -6,6 +6,21 @@ This project provides a comprehensive pipeline for generating machine learning i
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
+# Table of Contents
+1. [README](#readme)
+2. [NMR-Based Machine Learning Input Generator](#nmr-based-machine-learning-input-generator)
+3. [Features](#features)
+4. [Requirements](#requirements)
+5. [Installation](#installation)
+6. [Directory Structure](#directory-structure)
+7. [Usage](#usage)
+8. [Command Line Arguments](#command-line-arguments)
+9. [Example Usage](#example-usage)
+10. [Input CSV Format](#input-csv-format)
+11. [Script Workflow](#script-workflow)
+12. [Troubleshooting](#troubleshooting)
+13. [License](#license)
+
 ### Features
 
 - **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
