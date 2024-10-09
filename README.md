@@ -59,11 +59,11 @@ demiurge/
 ├── input_example.csv              # Example of the input file
 ├── install_modules.py             # Installs required Python packages
 ├── predictor/
-│   ├── predictorh.jar             # Java-based predictor for 1H spectra [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
-│   ├── predictor13C.jar           # Java-based predictor for 13C spectra [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
+│   ├── predictorh.jar             # Java-based predictor for 1H spectra [NMRshiftDB2]
+│   ├── predictor13C.jar           # Java-based predictor for 13C spectra [NMRshiftDB2]
 │   ├── cdk-2.9.jar                # CDK library required for spectrum prediction.
-│   ├── BatchProcessor1H.java      # Java batch processor for 1H spectra
-│   └── BatchProcessor13C.java     # Java batch processor for 13C spectra
+│   ├── BatchProcessor1H.java      # Java batch processor for 1H spectra [NMRshiftDB2]
+│   └── BatchProcessor13C.java     # Java batch processor for 13C spectra [NMRshiftDB2]
 ├── logD_predictor_bin/            # Directory containing helper modules
 │   ├── csv_checker.py             # Verifies and preprocesses CSV files
 │   ├── gen_mols.py                # Generates .mol files from SMILES strings
