@@ -22,7 +22,7 @@ Ensure the following software and libraries are installed:
    - `rdkit`
    - `pandas`
    - `numpy`
-   - `arty`
+   - `art`
    - `tqdm`
 
    Install the required Python packages using:
@@ -30,8 +30,13 @@ Ensure the following software and libraries are installed:
    ```bash
    pip install rdkit pandas numpy tqdm art
    ```
+   or predefined Python script, which will check if the necessary libraries are installed. If not it will install them.:
 
-2. **Java SDK**:
+   ```bash
+   python install_modules.py
+   ```
+   
+3. **Java SDK**:
    - Java Development Kit (JDK) is required to compile and run the Java batch processor for NMR spectrum prediction. Make sure the `javac` and `java` commands are available in your system's PATH.
 
 ### Installation
