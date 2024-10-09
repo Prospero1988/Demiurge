@@ -4,9 +4,26 @@
 
 This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from <sup>1</sup>H or <sup>13</sup>C NMR spectra. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra, and merges the results with a target property to create a final dataset suitable for machine learning applications.
 
+The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
+
+# Table of Contents
+1. [README](#readme)
+2. [NMR-Based Machine Learning Input Generator](#nmr-based-machine-learning-input-generator)
+3. [Features](#features)
+4. [Requirements](#requirements)
+5. [Installation](#installation)
+6. [Directory Structure](#directory-structure)
+7. [Usage](#usage)
+8. [Command Line Arguments](#command-line-arguments)
+9. [Example Usage](#example-usage)
+10. [Input CSV Format](#input-csv-format)
+11. [Script Workflow](#script-workflow)
+12. [Troubleshooting](#troubleshooting)
+13. [License](#license)
+
 ### Features
 
-- **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as `.mol` files using RDKit.
+- **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
 - **NMR Spectrum Prediction**: Predicts NMR spectra for each molecule using a custom Java-based [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) predictor.
 - **Bucketization**: Converts predicted NMR spectra into a uniform matrix using a bucketing technique.
 - **Data Merging**: Merges the bucketized spectra with property labels to form a consolidated dataset.
@@ -16,13 +33,15 @@ This project provides a comprehensive pipeline for generating machine learning i
 
 ### Requirements
 
+**Important**: The script was tested under **Windows 10** using **PowerShell** and works reliably in this environment on **Python 3.11.4**. It has **not** been tested on Linux or other operating systems.
+
 Ensure the following software and libraries are installed:
 
 1. **Python Libraries**:
    - `rdkit`
    - `pandas`
    - `numpy`
-   - `arty`
+   - `art`
    - `tqdm`
 
    Install the required Python packages using:
@@ -30,8 +49,13 @@ Ensure the following software and libraries are installed:
    ```bash
    pip install rdkit pandas numpy tqdm art
    ```
+   or predefined Python script, which will check if the necessary libraries are installed. If not it will install them:
 
-2. **Java SDK**:
+   ```bash
+   python install_modules.py
+   ```
+   
+3. **Java SDK**:
    - Java Development Kit (JDK) is required to compile and run the Java batch processor for NMR spectrum prediction. Make sure the `javac` and `java` commands are available in your system's PATH.
 
 ### Installation
@@ -47,19 +71,28 @@ cd nmr-ml-input-generator
 
 The project is organized into the following directories and files:
 
-- `demiurge_bin/`
-  - `gen_mols.py`: Generates `.mol` files from SMILES strings.
-  - `predictor.py`: Runs the Java batch processor for NMR spectrum prediction.
-  - `bucket.py`: Converts spectra into a uniform bucketized matrix.
-  - `merger.py`: Merges bucketized spectra into a single file.
-  - `labeler.py`: Adds labels to the merged spectra file.
-  - `custom_header.py`: Adds custom headers to the final merged dataset.
-- `predictor/`
-  - `BatchProcessor1H.java`: Java class for 1H NMR spectrum prediction.
-  - `BatchProcessor13C.java`: Java class for 13C NMR spectrum prediction.
-  - `predictorh.jar`: JAR file for 1H NMR spectrum prediction [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
-  - `predictorc.jar`: JAR file for 13C NMR spectrum prediction [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/)
-  - `cdk-2.9.jar`: CDK library required for spectrum prediction.
+```
+demiurge/
+│
+├── demiurge.py                    # Main script for executing the pipeline
+├── input_example.csv              # Example of the input file
+├── install_modules.py             # Installs required Python packages
+├── predictor/
+│   ├── predictorh.jar             # Java-based predictor for 1H spectra [NMRshiftDB2]
+│   ├── predictor13C.jar           # Java-based predictor for 13C spectra [NMRshiftDB2]
+│   ├── cdk-2.9.jar                # CDK library required for spectrum prediction.
+│   ├── BatchProcessor1H.java      # Java batch processor for 1H spectra [NMRshiftDB2]
+│   └── BatchProcessor13C.java     # Java batch processor for 13C spectra [NMRshiftDB2]
+├── logD_predictor_bin/            # Directory containing helper modules
+│   ├── csv_checker.py             # Verifies and preprocesses CSV files
+│   ├── gen_mols.py                # Generates .mol files from SMILES strings
+│   ├── bucket.py                  # Buckets NMR spectra
+│   ├── merger.py                  # Merges bucketed spectra CSVs
+|   ├── labeler.py                 # Adds labels to the merged spectra file.
+│   ├── custom_header.py           # Adds custom headers to the final dataset
+│   └── model_query.py             # Queries machine learning models
+└── README.md                      # Project documentation (this file)
+```
 
 ### Usage
 
@@ -143,7 +176,3 @@ Example `test.csv`:
 ### License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-### Contact
-
-For any questions or issues, please contact [arkadiusz.leniak@gmail.com](mailto:arkadiusz.leniak@gmail.com).
