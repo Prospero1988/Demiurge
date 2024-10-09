@@ -174,7 +174,3 @@ Example `test.csv`:
 ### License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-### Contact
-
-For any questions or issues, please contact [arkadiusz.leniak@gmail.com](mailto:arkadiusz.leniak@gmail.com).
