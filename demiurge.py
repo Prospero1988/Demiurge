@@ -43,8 +43,9 @@ def main():
     """
     
     # ANSI color
-    COLORS = ['\033[38;5;46m',
-              '\033[38;5;196m'
+    COLORS = ['\033[38;5;46m',    # Green
+              '\033[38;5;196m',   # Red
+              '\033[38;5;214m'    # Orange
              ]
     RESET = '\033[0m'
     
@@ -130,8 +131,8 @@ def main():
         # Optional: Clean up temporary dirs and data if the --clean flag is set
         if args.clean:
             print(
-                "Script executed with the {COLORS[1]}--clean {RESET}option. All temporary files "
-                "and folders will be removed:\n"
+                f"Script executed with the {COLORS[2]}--clean {RESET}option. All temporary files "
+                f"and folders will be removed:\n"
             )
             temp_data = [
                 mol_directory, csv_output_folder, processed_dir, merged_dir
@@ -139,16 +140,16 @@ def main():
             
             if os.path.exists(verified_csv_path):
                 os.remove(verified_csv_path)
-                print(f"The file '{verified_csv_path}' has been deleted.")
+                print(f"The file {COLORS[2]}'{verified_csv_path}'{RESET} has been deleted.")
             else:
-                print(f"The file '{verified_csv_path}' does not exist.")
+                print(f"{COLORS[1]}The file '{verified_csv_path}' does not exist.{RESET}")
             
             for folder in temp_data:
                 if os.path.exists(folder):
                     shutil.rmtree(folder)
-                    print(f"Temporary folder '{folder}' has been deleted.")
+                    print(f"Temporary folder {COLORS[2]}'{folder}'{RESET} has been deleted.")
                 else:
-                    print(f"Folder '{folder}' does not exist.")
+                    print(f"{COLORS[1]}Folder '{folder}' does not exist.{RESET}")
     
     finally:
         # Restore original sys.stdout and sys.stderr

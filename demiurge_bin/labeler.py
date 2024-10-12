@@ -21,6 +21,14 @@ def labeler(csv_path, output_path, label_column, merged_dir):
     - labeled (pd.DataFrame): The labeled DataFrame after adding the specified
                               labels.
     """
+    
+    # ANSI color
+    COLORS = ['\033[38;5;46m',    # Green
+              '\033[38;5;196m',   # Red
+              '\033[38;5;214m'    # Orange
+             ]
+    RESET = '\033[0m'
+    
     try:
         labels_csv = pd.read_csv(csv_path)
         merged_nmr = pd.read_csv(output_path)
@@ -46,11 +54,11 @@ def labeler(csv_path, output_path, label_column, merged_dir):
                                  '_labeled.csv')
 
         labeled.to_csv(file_name, index=False)
-        print(f'\nColumn {label_column_name} successfully copied'
+        print(f'\nColumn {COLORS[2]}{label_column_name}{RESET} successfully copied'
               f' from {os.path.basename(csv_path)}'
-              f" to {os.path.basename(output_path)}.")
+              f' to {os.path.basename(output_path)}.')
 
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"{COLORS[1]}Error occurred: {e}{RESET}")
 
     return labeled
