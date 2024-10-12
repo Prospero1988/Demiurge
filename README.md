@@ -8,6 +8,8 @@ The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://so
 
 # An example of the finished script run
 
+The script was run as an example for the prediction of 13C NMR spectra with an input file containing a misdefined one of the rows. In addition, a comma was inserted as the decimal separator and a semicolon was inserted as the column separator.
+
 ![Working script in PowerShell_1](IMG/demiurge_13c.png)
 ![Working script in PowerShell_2](IMG/demiurge_13c2.png)
 
