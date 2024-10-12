@@ -1,22 +1,13 @@
-# csv_checker.py
-
 import pandas as pd
 import csv
-
 
 def verify_csv(file_path):
     """
     Function to verify and modify a CSV file by handling separators, decimal
     points, and column structure. Additionally, it cleans up the first column
     (e.g., molecule names) by removing problematic characters.
-
-    Parameters:
-    - file_path: The path to the input CSV file to be verified.
-
-    Returns:
-    - verified_file_path: Path to the newly saved CSV file with '_verified'
-                          suffix,
-                          or None if there was an error in processing the file.
+    
+    If any rows are malformed (i.e., column count mismatch), they are reported.
     """
     
     # ANSI color
@@ -33,8 +24,7 @@ def verify_csv(file_path):
             sample = file.read(2048)
 
         delimiter_candidates = [',', ';', '\t']
-        delimiter_counts = {delim: sample.count(delim) for delim in
-                            delimiter_candidates}
+        delimiter_counts = {delim: sample.count(delim) for delim in delimiter_candidates}
         separator = max(delimiter_counts, key=delimiter_counts.get)
         print(f"\nDetected column separator: {COLORS[2]}'{separator}'{RESET}")
 
@@ -45,8 +35,26 @@ def verify_csv(file_path):
             expected_columns = len(headers)
             print(f"\nExpected number of columns: {COLORS[2]}{expected_columns}{RESET}")
 
-        print("\nLoading CSV file with detected separator, "
-              "skipping malformed rows...")
+        print("\nLoading CSV file and checking for malformed rows...")
+        
+        # Track malformed rows
+        malformed_rows = []
+
+        # Read the file line by line and check for column mismatch
+        with open(file_path, 'r') as file:
+            reader = csv.reader(file, delimiter=separator)
+            for i, row in enumerate(reader):
+                if len(row) != expected_columns:
+                    malformed_rows.append(i + 1)  # Track row numbers (starting from 1)
+                    print(f"\n{COLORS[1]}Warning: Malformed row {i + 1} (expected {expected_columns} columns, found {len(row)} columns): \n{row}{RESET}")
+        
+        if malformed_rows:
+            print(f"\n{COLORS[1]}Total malformed rows: {len(malformed_rows)}{RESET}\n"
+                  f"{COLORS[1]}Malformed rows will not be used in further processing..{RESET}")
+        else:
+            print(f"\n{COLORS[0]}No malformed rows detected.{RESET}")
+
+        # Load the data, skipping malformed rows
         df = pd.read_csv(file_path, delimiter=separator, on_bad_lines='skip')
         print(f"\nLoaded CSV file with shape: {COLORS[2]}{df.shape}{RESET}")
 
@@ -56,7 +64,7 @@ def verify_csv(file_path):
 
     try:
         if separator == ';':
-            print("\nSeparator is {COLORS[2]}semicolon{RESET}. Checking for decimal commas...")
+            print(f"\nSeparator is {COLORS[2]}semicolon{RESET}. Checking for decimal commas...")
 
             def is_comma_decimal(cell):
                 try:
@@ -68,13 +76,11 @@ def verify_csv(file_path):
                     return False
 
             if df.applymap(is_comma_decimal).any().any():
-                print("\nDetected commas as decimal points. Replacing "
-                      "with dots...")
+                print("\nDetected commas as decimal points. Replacing with dots...")
                 df = df.applymap(
-                    lambda x: x.replace(',', '.') if isinstance(x, str) and
-                    is_comma_decimal(x) else x
+                    lambda x: x.replace(',', '.') if isinstance(x, str) and is_comma_decimal(x) else x
                 )
-                print("\n{COLORS[0]}Replaced decimal commas with dots.{RESET}")
+                print(f"\n{COLORS[0]}Replaced decimal commas with dots.{RESET}")
             else:
                 print("\nNo decimal commas detected.")
 
@@ -96,8 +102,7 @@ def verify_csv(file_path):
         def clean_molecule_name(name):
             if isinstance(name, str):
                 name = name.strip().replace(" ", "").replace("\t", "")
-                for char in ['*', '&', '^', '%', '$', '@', '!', '~', '#', '(',
-                             ')', '[', ']', '{', '}', '?', '/', '\\']:
+                for char in ['*', '&', '^', '%', '$', '@', '!', '~', '#', '(', ')', '[', ']', '{', '}', '?', '/', '\\']:
                     name = name.replace(char, "_")
                 return name
             return name
