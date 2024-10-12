@@ -6,22 +6,28 @@ This project provides a comprehensive pipeline for generating machine learning i
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
-![Working script in PowerShell](IMG/demiurge_13c.png)
+# An example of the finished script run
+
+The script was run as an example for the prediction of 13C NMR spectra with an input file containing a misdefined one of the rows. In addition, a comma was inserted as the decimal separator and a semicolon was inserted as the column separator.
+
+![Working script in PowerShell_1](IMG/demiurge_13c.png)
+![Working script in PowerShell_2](IMG/demiurge_13c2.png)
 
 # Table of Contents
 1. [README](#readme)
 2. [NMR-Based Machine Learning Input Generator](#nmr-based-machine-learning-input-generator)
-3. [Features](#features)
-4. [Requirements](#requirements)
-5. [Installation](#installation)
-6. [Directory Structure](#directory-structure)
-7. [Usage](#usage)
-8. [Command Line Arguments](#command-line-arguments)
-9. [Example Usage](#example-usage)
-10. [Input CSV Format](#input-csv-format)
-11. [Script Workflow](#script-workflow)
-12. [Troubleshooting](#troubleshooting)
-13. [License](#license)
+3. [An example of the finished script run](#An-example-of-the-finished-script-run)
+4. [Features](#features)
+5. [Requirements](#requirements)
+6. [Installation](#installation)
+7. [Directory Structure](#directory-structure)
+8. [Usage](#usage)
+9. [Command Line Arguments](#command-line-arguments)
+10. [Example Usage](#example-usage)
+11. [Input CSV Format](#input-csv-format)
+12. [Script Workflow](#script-workflow)
+13. [Troubleshooting](#troubleshooting)
+14. [License](#license)
 
 ### Features
 
