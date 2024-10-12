@@ -6,7 +6,8 @@ This project provides a comprehensive pipeline for generating machine learning i
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
-![Working script in PowerShell](IMG/demiurge_13c.png)
+![Working script in PowerShell_1](IMG/demiurge_13c.png)
+![Working script in PowerShell_2](IMG/demiurge_13c2.png)
 
 # Table of Contents
 1. [README](#readme)
