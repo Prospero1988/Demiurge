@@ -50,7 +50,7 @@ def verify_csv(file_path):
         
         if malformed_rows:
             print(f"\n{COLORS[1]}Total malformed rows: {len(malformed_rows)}{RESET}\n"
-                  f"{COLORS[1]}Malformed rows will not be used in further processing..{RESET}")
+                  f"{COLORS[1]}Malformed rows will not be used in further processing.{RESET}")
         else:
             print(f"\n{COLORS[0]}No malformed rows detected.{RESET}")
 
