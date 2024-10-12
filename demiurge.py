@@ -41,6 +41,13 @@ def main():
     """
     Main function to execute the NMR data processing pipeline.
     """
+    
+    # ANSI color
+    COLORS = ['\033[38;5;46m',
+              '\033[38;5;196m'
+             ]
+    RESET = '\033[0m'
+    
     # Open the log file in append mode
     log_file = open('demiurge.log', 'a', encoding='utf-8')
 
@@ -123,7 +130,7 @@ def main():
         # Optional: Clean up temporary dirs and data if the --clean flag is set
         if args.clean:
             print(
-                "Script executed with the --clean option. All temporary files "
+                "Script executed with the {COLORS[1]}--clean {RESET}option. All temporary files "
                 "and folders will be removed:\n"
             )
             temp_data = [
@@ -151,7 +158,7 @@ def main():
         # Close the log file
         log_file.close()
     
-    print("\nEND OF THE SCRIPT\n")
+    print(f"\n{COLORS[0]}END OF THE SCRIPT\n{RESET}")
 
 if __name__ == "__main__":
     main()

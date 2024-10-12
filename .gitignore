@@ -166,3 +166,4 @@ mols/
 predicted_spectra_1H/
 predicted_spectra_13C/
 merged/
+.spyproject/

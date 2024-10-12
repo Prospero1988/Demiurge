@@ -18,6 +18,12 @@ def custom_header(labeled, csv_path, predictor):
     Returns:
     - None
     """
+    # ANSI color
+    COLORS = ['\033[38;5;46m',
+              '\033[38;5;196m'
+             ]
+    RESET = '\033[0m'
+    
     try:
         header_list = ["MOLECULE_NAME", "LABEL"]
         number_of_columns = len(labeled.columns) - 2
@@ -28,8 +34,8 @@ def custom_header(labeled, csv_path, predictor):
         if len(header_list) == len(labeled.columns):
             labeled.columns = header_list
         else:
-            print(f"Error: Headers count ({len(header_list)}) does not match "
-                  f"columns count ({len(labeled.columns)}).")
+            print(f"{COLORS[1]}Error: Headers count ({len(header_list)}) does not match {RESET}"
+                  f"{COLORS[1]}columns count ({len(labeled.columns)}).{RESET}")
 
         final_dir = os.path.join(os.getcwd(), 'generated_ML_inputs')
         os.makedirs(final_dir, exist_ok=True)
@@ -38,8 +44,8 @@ def custom_header(labeled, csv_path, predictor):
         file_name = os.path.join(final_dir, f"{file_name}_{predictor}_ML_input.csv")
 
         labeled.to_csv(file_name, index=False)
-        print(f"\nFinal ML INPUT file saved as: {os.path.basename(file_name)} "
-              f"in {final_dir}\n")
+        print(f"\n{COLORS[0]}Final ML INPUT file saved as: {os.path.basename(file_name)} {RESET}"
+              f"{COLORS[0]}in {final_dir}\n{RESET}")
 
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"{COLORS[1]}Error occurred: {e}{RESET}")
