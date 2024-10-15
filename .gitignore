@@ -168,3 +168,5 @@ predicted_spectra_13C/
 merged/
 .spyproject/
 MATRIX_COMPLEX_3/
+bucketed_1H_spectra/
+bucketed_13C_spectra/
