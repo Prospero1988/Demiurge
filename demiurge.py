@@ -20,6 +20,7 @@ from demiurge_bin.bucket import bucket
 from demiurge_bin.merger import merger
 from demiurge_bin.labeler import labeler
 from demiurge_bin.custom_header import custom_header
+from demiurge_bin.fp_generator import fp_generator
 
 # Import sys and define the Tee class
 import sys
@@ -73,8 +74,10 @@ def main():
             "--predictor",
             type=str,
             required=True,
-            choices=["1H", "13C"],
-            help="Type of NMR Predictor to use: '1H' or '13C'."
+            choices=["1H", "13C", "FP"],
+            help="Type of NMR Predictor to use: '1H' or '13C'. You can also "
+            "generate from RDKit FingerPrints not from NMR Spectra, "
+            "use argument: 'FP'"
         )
         parser.add_argument(
             "--label_column",
@@ -107,16 +110,23 @@ def main():
 
         # Step 1: Verify the CSV input file and correct any issues
         verified_csv_path = verify_csv(args.csv_path)
-    
-        # Step 2: Generate .mol files from SMILES strings
-        mol_directory = generate_mol_files(verified_csv_path)
-    
-        # Step 3: Predict NMR spectra and save results as .csv files
-        csv_output_folder = run_java_batch_processor(mol_directory, args.predictor)
-    
-        # Step 4: Perform bucketing to generate pseudo NMR spectra
-        processed_dir = bucket(csv_output_folder, args.predictor)
-    
+
+        if args.predictor == 'FP':
+            
+            # Step 2 - 4: Generate FingerPrint files
+            processed_dir = fp_generator(verified_csv_path)
+            
+        else:
+
+            # Step 2: Generate .mol files from SMILES strings
+            mol_directory = generate_mol_files(verified_csv_path)
+        
+            # Step 3: Predict NMR spectra and save results as .csv files
+            csv_output_folder = run_java_batch_processor(mol_directory, args.predictor)
+        
+            # Step 4: Perform bucketing to generate pseudo NMR spectra
+            processed_dir = bucket(csv_output_folder, args.predictor)
+        
         # Step 5: Merge spectra in CSV format into one matrix file
         output_path, merged_dir = merger(processed_dir, verified_csv_path)
     
@@ -134,10 +144,14 @@ def main():
                 f"Script executed with the {COLORS[2]}--clean {RESET}option. All temporary files "
                 f"and folders will be removed:\n"
             )
-            temp_data = [
-                mol_directory, csv_output_folder, processed_dir, merged_dir
-                ]
+                
+            temp_data_fp = [processed_dir, merged_dir]
             
+            # Assign temp_data based on predictor
+            if args.predictor != "FP":
+                temp_data_fp.extend(['csv_output_folder', 'mol_directory'])
+            temp_data = temp_data_fp
+
             if os.path.exists(verified_csv_path):
                 os.remove(verified_csv_path)
                 print(f"The file {COLORS[2]}'{verified_csv_path}'{RESET} has been deleted.")
