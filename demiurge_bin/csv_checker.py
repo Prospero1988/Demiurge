@@ -124,6 +124,18 @@ def verify_csv(file_path):
         df.to_csv(verified_file_path, index=False, sep=',')
         print(f"\nCSV file saved at: {COLORS[2]}{verified_file_path}{RESET}")
 
+        # Checking for NaN values in any column and removing rows with NaN
+        try:
+            nan_count = df.isna().sum().sum()  # Total NaN values
+            if nan_count > 0:
+                df = df.dropna()  # Drop rows with any NaN value
+                print(f"\n{COLORS[1]}Found {nan_count} NaN values. Rows containing NaN have been removed.{RESET}")
+                df.to_csv(verified_file_path, index=False, sep=',')
+            else:
+                print(f"\n{COLORS[0]}No NaN values found in the file.{RESET}")
+        except Exception as e:
+            print(f"\n{COLORS[1]}Error while checking for NaN values: {e}{RESET}")
+        
     except Exception as e:
         print(f"\n{COLORS[1]}Error processing CSV file: {e}{RESET}")
         return None

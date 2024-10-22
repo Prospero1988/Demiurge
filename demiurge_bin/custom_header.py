@@ -43,7 +43,18 @@ def custom_header(labeled, csv_path, predictor):
         file_name = os.path.basename(csv_path).rsplit('.', 1)[0].rsplit('_', 1)[0]
         file_name = os.path.join(final_dir, f"{file_name}_{predictor}_ML_input.csv")
 
-        labeled.to_csv(file_name, index=False)
+        ##Checking for NaN values in any column and removing rows with NaN #
+        try:
+            nan_count = labeled.isna().sum().sum()  # Total NaN values
+            if nan_count > 0:
+                labeled = labeled.dropna()  # Drop rows with any NaN value
+                print(f"{COLORS[1]}\nFound {nan_count} NaN values. Rows containing NaN have been removed.{RESET}")
+            else:
+                print(f"{COLORS[0]}\nNo NaN values found in the file.{RESET}")
+        except Exception as e:
+            print(f"\n{COLORS[1]}Error while checking for NaN values: {e}{RESET}")
+
+        labeled.to_csv(file_name, index=False, sep=',')
         print(f"\n{COLORS[0]}Final ML INPUT file saved as: {os.path.basename(file_name)} {RESET}"
               f"{COLORS[0]}in {final_dir}\n{RESET}")
 

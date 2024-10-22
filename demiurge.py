@@ -149,7 +149,7 @@ def main():
             
             # Assign temp_data based on predictor
             if args.predictor != "FP":
-                temp_data_fp.extend(['csv_output_folder', 'mol_directory'])
+                temp_data_fp.extend([csv_output_folder, mol_directory])
             temp_data = temp_data_fp
 
             if os.path.exists(verified_csv_path):
