@@ -24,14 +24,16 @@ def bucket(directory, predictor):
              ]
     RESET = '\033[0m'
     
+    number_of_buckets = 200
+    
     if predictor == "1H":
-        sw_min, sw_max = -1, 14
+        sw_min, sw_max = -3, 17
     elif predictor == "13C":
         sw_min, sw_max = -10, 230
 
     def create_buckets():
-        bucket_range = np.linspace(sw_min, sw_max, 251)
-        buckets = {i: 0 for i in range(250)}
+        bucket_range = np.linspace(sw_min, sw_max, number_of_buckets + 1)
+        buckets = {i: 0 for i in range(number_of_buckets)}
         return bucket_range, buckets
 
     def find_bucket_index(value, bucket_range):
@@ -45,7 +47,7 @@ def bucket(directory, predictor):
     def process_file(file_path, output_dir, bucket_range):
         with open(file_path, 'r') as f:
             reader = csv.reader(f)
-            buckets = {i: 0 for i in range(250)}
+            buckets = {i: 0 for i in range(number_of_buckets)}
             error_values = []
 
             for row in reader:
@@ -63,7 +65,7 @@ def bucket(directory, predictor):
                 output_dir, os.path.basename(file_path)
             )
             with open(output_file_path, 'w') as out_f:
-                for i in range(250):
+                for i in range(number_of_buckets):
                     out_f.write(f"{buckets[i]}\n")
 
             return error_values

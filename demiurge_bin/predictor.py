@@ -60,7 +60,7 @@ def run_java_batch_processor(mol_directory, predictor):
 
     # Zmieniona komenda java dla cross-platform
     run_command = (
-        f'java -Xmx1g -classpath "{predictor_jar}{classpath_separator}{cdk_jar}{classpath_separator}./" '
+        f'java -Xmx8g -classpath "{predictor_jar}{classpath_separator}{cdk_jar}{classpath_separator}./" '
         f'{batch_processor_class} "{mol_directory}" "{csv_output_folder}" '
         '"Dimethylsulphoxide-D6 (DMSO-D6, C2D6SO)"'
     )

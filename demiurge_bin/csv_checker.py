@@ -21,7 +21,7 @@ def verify_csv(file_path):
     # Check if input file exists
     if os.path.exists(file_path):
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 print(f"\nRead file {COLORS[2]}{file_path}{RESET}")
         except Exception as e:
             print(f"{COLORS[1]}Error reading the file {file_path}.\n{e}\n{RESET}")
@@ -54,7 +54,7 @@ def verify_csv(file_path):
         malformed_rows = []
 
         # Read the file line by line and check for column mismatch
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file, delimiter=separator)
             for i, row in enumerate(reader):
                 if len(row) != expected_columns:
@@ -88,9 +88,9 @@ def verify_csv(file_path):
                 except ValueError:
                     return False
 
-            if df.applymap(is_comma_decimal).any().any():
+            if df.map(is_comma_decimal).any().any():
                 print("\nDetected commas as decimal points. Replacing with dots...")
-                df = df.applymap(
+                df = df.map(
                     lambda x: x.replace(',', '.') if isinstance(x, str) and is_comma_decimal(x) else x
                 )
                 print(f"\n{COLORS[0]}Replaced decimal commas with dots.{RESET}")
