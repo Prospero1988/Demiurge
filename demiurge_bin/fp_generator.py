@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 from rdkit import Chem
 from rdkit import DataStructs
+from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
 
 # ANSI color codes for console output
 COLORS = ['\033[38;5;46m',    # Green
@@ -64,7 +65,10 @@ def fp_generator(csv_path):
                     raise ValueError(f"Invalid SMILES string: {smiles}")
 
                 # Generate fingerprint directly from molecule object
-                fingerprint = Chem.RDKFingerprint(mol)
+                # fingerprint = Chem.RDKFingerprint(mol)
+
+                generator = GetMorganGenerator(radius=2, fpSize=2048)  # Tworzymy generator ECFP4
+                fingerprint = generator.GetFingerprint(mol)  # Generujemy fingerprint
 
                 # Convert fingerprint to list of bits (integers 0 or 1)
                 fp_array = list(fingerprint.ToBitString())

@@ -27,7 +27,7 @@ def bucket(directory, predictor):
     number_of_buckets = 200
     
     if predictor == "1H":
-        sw_min, sw_max = -3, 17
+        sw_min, sw_max = -1, 16
     elif predictor == "13C":
         sw_min, sw_max = -10, 230
 
