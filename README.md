@@ -109,7 +109,7 @@ demiurge/
 To run the script, use the following command:
 
 ```bash
-python Demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_column <column_number> [--clean]
+python demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_column <column_number> [--clean]
 ```
 
 #### Command Line Arguments
@@ -122,7 +122,7 @@ python Demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_co
 #### Example Usage
 
 ```bash
-python Demiurge.py --csv_path test.csv --predictor 1H --label_column 3 --clean
+python demiurge.py --csv_path test.csv --predictor 1H --label_column 3 --clean
 ```
 
 In this example:
@@ -134,7 +134,7 @@ In this example:
 - All intermediate files and directories will be deleted after execution due to the `--clean` option.
 
 ```bash
-python Demiurge.py --csv_path test.csv --predictor FP --label_column 3 --clean
+python demiurge.py --csv_path test.csv --predictor FP --label_column 3 --clean
 ```
 
 In this example:
