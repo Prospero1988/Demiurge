@@ -2,7 +2,17 @@
 
 ## NMR or ECFP4-based Machine Learning Input Generator
 
-This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from **<sup>1</sup>H**, **<sup>13</sup>C NMR spectra** or **ECFP4 Fingerprints**. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra or ECFP4 Fingerprints, and merges the results with a target property to create a final dataset suitable for machine learning applications.
+Demiurge is a modular and fully automated Python-based platform designed to generate machine learning input data from both simulated spectral and structural molecular representations. Specifically developed to support QSPR studies, it processes chemical structures provided as SMILES strings alongside target properties (e.g., CHI logD), and produces ready-to-use feature matrices for classical ML models and deep neural networks.
+
+The tool supports three representation modes: predicted **¹H NMR** spectra, **¹³C NMR** spectra, and **ECFP4** molecular fingerprints. Input files in `.csv` format are validated for SMILES integrity and formatting. Molecular structures are reconstructed using **RDKit**, optimized in 3D, then flattened to 2D to comply with NMR prediction tools.
+
+NMR spectral predictions are performed locally using a standalone Java-based engine built on the **NMRshiftDB2** database, utilizing **HOSE-code** pattern matching. The resulting chemical shift lists are then transformed into fixed-length spectral vectors through a custom bucketing strategy (200 bins per nucleus, but can be changed in bucketing module script), enabling compatibility with ML pipelines.
+
+For ECFP4 generation, **RDKit's Morgan fingerprinting** (radius = 2) is used to construct 2048-bit binary descriptors. All generated feature matrices are merged with property labels (e.g., CHI logD), headers are appended, and the final datasets are saved as `.csv` files.
+
+Demiurge is optimized for parallel execution on 8-core CPUs, achieving processing times of ~6 minutes for ¹H NMR spectra, ~15 minutes for ¹³C NMR, and under 2 minutes for ECFP4 on datasets of ~1000 molecules.
+
+The architecture is fully extensible and easily adaptable to other endpoints such as **logP**, **TPSA**, or **logS**, and to other types of spectral or molecular representations.
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
