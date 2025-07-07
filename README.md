@@ -1,6 +1,6 @@
 # README
 
-## NMR-Based Machine Learning Input Generator
+## NMR or ECFP4-based Machine Learning Input Generator
 
 This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from <sup>1</sup>H, <sup>13</sup>C NMR spectra or ECFP4 Fingerprints. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra or ECFP4 Fingerprints, and merges the results with a target property to create a final dataset suitable for machine learning applications.
 
