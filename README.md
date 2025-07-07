@@ -1,4 +1,4 @@
-# README
+# DEMIURGE
 
 ## NMR or ECFP4-based Machine Learning Input Generator
 
@@ -10,10 +10,10 @@ The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://so
 
 The script was run as an example for the prediction of 13C NMR spectra with an input file containing a misdefined one of the rows. In addition, a comma was inserted as the decimal separator and a semicolon was inserted as the column separator.
 
-![Working script in PowerShell_1](IMG/demiurge_13c.png)
-![Working script in PowerShell_2](IMG/demiurge_13c2.png)
+<p align="center"><IMG SRC="IMG/demiurge_13c.png" /></p>
+<p align="center"><IMG SRC="IMG/demiurge_13c2.png" /></p>
 
-# Table of Contents
+## Table of Contents 
 1. [README](#readme)
 2. [NMR or ECFP4-based Machine Learning Input Generator](#nmr-based-machine-learning-input-generator)
 3. [An example of the finished script run](#An-example-of-the-finished-script-run)
