@@ -2,7 +2,7 @@
 
 ## NMR-Based Machine Learning Input Generator
 
-This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from <sup>1</sup>H or <sup>13</sup>C NMR spectra. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra, and merges the results with a target property to create a final dataset suitable for machine learning applications.
+This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from <sup>1</sup>H, <sup>13</sup>C NMR spectra or ECFP4 Fingerprints. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra or ECFP4 Fingerprints, and merges the results with a target property to create a final dataset suitable for machine learning applications.
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
@@ -32,9 +32,10 @@ The script was run as an example for the prediction of 13C NMR spectra with an i
 ### Features
 
 - **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
+- **ECFP4 Fingerprints Generation**: Generates feature space on ECPF4 fingeprints with radius of 2
 - **NMR Spectrum Prediction**: Predicts NMR spectra for each molecule using a custom Java-based [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) predictor.
 - **Bucketization**: Converts predicted NMR spectra into a uniform matrix using a bucketing technique.
-- **Data Merging**: Merges the bucketized spectra with property labels to form a consolidated dataset.
+- **Data Merging**: Merges the bucketized spectra/fingerprints with property labels to form a consolidated dataset.
 - **Label Insertion**: Adds a target property column to the merged dataset based on a specified label column.
 - **Custom Headers**: Adds headers to the final dataset for easy identification and readability.
 - **Optional Cleanup**: Deletes all intermediate files and folders to save space and reduce clutter.
@@ -98,6 +99,7 @@ demiurge/
 │   ├── merger.py                  # Merges bucketed spectra CSVs
 |   ├── labeler.py                 # Adds labels to the merged spectra file.
 │   ├── custom_header.py           # Adds custom headers to the final dataset
+│   ├── custom_header.py           # ECFP4 Fingerprints generator
 │   └── model_query.py             # Queries machine learning models
 └── README.md                      # Project documentation (this file)
 ```
@@ -113,7 +115,7 @@ python Demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_co
 #### Command Line Arguments
 
 - `--csv_path`: **[Required]** Path to the input CSV file containing compound names and SMILES codes.
-- `--predictor`: **[Required]** Specifies the type of NMR predictor to use (`1H` or `13C`).
+- `--predictor`: **[Required]** Specifies the type of NMR predictor to use (`1H` or `13C`) or ECFP4 Fingerprints (`FP`).
 - `--label_column`: **[Required]** The column index (1-based) in the input CSV file that contains the target property values.
 - `--clean`: **[Optional]** If set, the script will delete all intermediate temporary files and folders after execution.
 
@@ -146,7 +148,7 @@ Example `test.csv`:
 | Compound2     | CCC(=O)O        | 2.1   |
 | Compound3     | CCN(CC)CC       | 7.8   |
 
-### Script Workflow
+### Script Workflow for NMR-based output data
 
 1. **Step 1: Generate `.mol` Files**:
    - Reads SMILES codes from the input CSV file and generates corresponding `.mol` files using RDKit.
@@ -165,6 +167,24 @@ Example `test.csv`:
 
 6. **Step 6: Cleanup (Optional)**:
    - Deletes all intermediate files and directories if the `--clean` option is specified.
+
+### Script Workflow for ECFP4-based output data
+
+1. **Step 1: Generate `.mol` Files**  
+   - Reads SMILES strings from the input CSV file and converts them into 2D `.mol` files using RDKit.
+
+2. **Step 2: Calculate ECFP4 Fingerprints**  
+   - For each molecule, extended-connectivity fingerprints (ECFP4) are generated from the `.mol` structures using the RDKit implementation.
+
+3. **Step 3: Merge Fingerprints and Labels**  
+   - Merges the computed ECFP4 vectors with the label column (e.g., logD values) from the input CSV file into a unified DataFrame.
+
+4. **Step 4: Add Custom Headers**  
+   - Assigns descriptive headers to the final CSV file, improving interpretability and downstream machine learning usability.
+
+5. **Step 5: Cleanup (Optional)**  
+   - Deletes all intermediate files and directories if the `--clean` flag is used.
+
 
 ### Troubleshooting
 
