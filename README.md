@@ -6,14 +6,14 @@ This project provides a comprehensive pipeline for generating machine learning i
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
-# An example of the finished script run
+## 🖥 Examples of Working Program
 
 The script was run as an example for the prediction of 13C NMR spectra with an input file containing a misdefined one of the rows. In addition, a comma was inserted as the decimal separator and a semicolon was inserted as the column separator.
 
 <p align="center"><IMG SRC="IMG/demiurge_13c.png" /></p>
 <p align="center"><IMG SRC="IMG/demiurge_13c2.png" /></p>
 
-## Table of Contents 
+## 📑 Table of Contents
 1. [README](#readme)
 2. [NMR or ECFP4-based Machine Learning Input Generator](#nmr-based-machine-learning-input-generator)
 3. [An example of the finished script run](#An-example-of-the-finished-script-run)
@@ -29,7 +29,7 @@ The script was run as an example for the prediction of 13C NMR spectra with an i
 13. [Troubleshooting](#troubleshooting)
 14. [License](#license)
 
-### Features
+## 💡 Key Features
 
 - **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
 - **NMR Spectrum Prediction**: Predicts NMR spectra for each molecule using a custom Java-based [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) predictor.
@@ -40,7 +40,7 @@ The script was run as an example for the prediction of 13C NMR spectra with an i
 - **Custom Headers**: Adds headers to the final dataset for easy identification and readability.
 - **Optional Cleanup**: Deletes all intermediate files and folders to save space and reduce clutter.
 
-### Requirements
+### ✅
 
 **Important**: The script was tested under **Windows 10** using **PowerShell** and works reliably in this environment on **Python 3.11.4**. It has **not** been tested on Linux or other operating systems.
 
@@ -67,7 +67,7 @@ Ensure the following software and libraries are installed:
 3. **Java SDK**:
    - Java Development Kit (JDK) is required to compile and run the Java batch processor for NMR spectrum prediction. Make sure the `javac` and `java` commands are available in your system's PATH.
 
-### Installation
+## ⚙️ Installation
 
 Clone the repository and navigate to the project directory:
 
@@ -76,7 +76,7 @@ git clone https://github.com/your-username/nmr-ml-input-generator.git
 cd nmr-ml-input-generator
 ```
 
-### Directory Structure
+### 🗂 Directory Structure
 
 The project is organized into the following directories and files:
 
@@ -104,7 +104,7 @@ demiurge/
 └── README.md                      # Project documentation (this file)
 ```
 
-### Usage
+## 🚀 Usage
 
 To run the script, use the following command:
 
@@ -112,14 +112,14 @@ To run the script, use the following command:
 python demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_column <column_number> [--clean]
 ```
 
-#### Command Line Arguments
+### 📄 Command Line Arguments
 
 - `--csv_path`: **[Required]** Path to the input CSV file containing compound names and SMILES codes.
 - `--predictor`: **[Required]** Specifies the type of predictor to use: (`1H` or `13C`) for NMR predictions or (`FP`) for ECFP4 Fingerprints.
 - `--label_column`: **[Required]** The column index (1-based) in the input CSV file that contains the target property values.
 - `--clean`: **[Optional]** If set, the script will delete all intermediate temporary files and folders after execution.
 
-#### Example Usage
+### 📄 Example Usage
 
 ```bash
 python demiurge.py --csv_path test.csv --predictor 1H --label_column 3 --clean
@@ -144,7 +144,7 @@ In this example:
 - The fingerprint matrix will be merged with the target property values from `column 3` in `test.csv`.
 - All intermediate files and directories will be deleted after execution due to the `--clean` option.
 
-### Input CSV Format
+### 📄 Input CSV Format
 
 The input CSV file should have at least the following columns:
 - `MOLECULE_NAME`: The name or identifier of the molecule.
@@ -159,7 +159,7 @@ Example `test.csv`:
 | Compound2     | CCC(=O)O        | 2.1   |
 | Compound3     | CCN(CC)CC       | 7.8   |
 
-### Script Workflow for NMR-based Output Data (1H / 13C)
+### ⚙️ Script Workflow for NMR-based Output Data (1H / 13C)
 
 1. **Step 1: Generate `.mol` Files**:
    - Reads SMILES codes from the input CSV file and generates corresponding `.mol` files using RDKit.
@@ -179,7 +179,7 @@ Example `test.csv`:
 6. **Step 6: Cleanup (Optional)**:
    - Deletes all intermediate files and directories if the `--clean` option is specified.
 
-### Script Workflow for ECFP4-based Output Data (FP)
+### ⚙️ Script Workflow for ECFP4-based Output Data (FP)
 
 1. **Step 1: Generate `.mol` Files**  
    - Reads SMILES strings from the input CSV file and converts them into 2D `.mol` files using RDKit.
@@ -197,7 +197,7 @@ Example `test.csv`:
    - Deletes all intermediate files and directories if the `--clean` flag is used.
 
 
-### Troubleshooting
+### 🛠 Troubleshooting
 
 1. **Java Compilation Issues**:
    - Ensure that the `javac` and `java` commands are available and the Java SDK is installed.
@@ -212,6 +212,6 @@ Example `test.csv`:
 4. **Memory or Performance Issues**:
    - If handling a large dataset, consider increasing the memory allocation for the Java runtime by adjusting the `-Xmx` parameter in the script.
 
-### License
+### 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
