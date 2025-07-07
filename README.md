@@ -2,7 +2,7 @@
 
 ## NMR or ECFP4-based Machine Learning Input Generator
 
-This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from <sup>1</sup>H, <sup>13</sup>C NMR spectra or ECFP4 Fingerprints. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra or ECFP4 Fingerprints, and merges the results with a target property to create a final dataset suitable for machine learning applications.
+This project provides a comprehensive pipeline for generating machine learning inputs based on feature space derived from **<sup>1</sup>H**, **<sup>13</sup>C NMR spectra** or **ECFP4 Fingerprints**. The software reads a CSV file containing chemical compound names and their SMILES codes, processes the information to generate NMR spectra or ECFP4 Fingerprints, and merges the results with a target property to create a final dataset suitable for machine learning applications.
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
@@ -29,18 +29,18 @@ The script was run as an example for the prediction of 13C NMR spectra with an i
 13. [Troubleshooting](#troubleshooting)
 14. [License](#license)
 
-## 💡 Key Features
+## 💡Key Features
 
 - **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
 - **NMR Spectrum Prediction**: Predicts NMR spectra for each molecule using a custom Java-based [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) predictor.
-- **ECFP4 Fingerprints Generation**: Generates feature space using ECPF4 fingeprints with radius 2. (activated via --predictor FP)
+- **ECFP4 Fingerprints Generation**: Generates feature space using ECPF4 fingerprints with radius 2. (activated via --predictor FP)
 - **Bucketization**: Converts predicted NMR spectra into a uniform matrix using a bucketing technique.
 - **Data Merging**: Merges the bucketized spectra/fingerprints with property labels to form a consolidated dataset.
 - **Label Insertion**: Adds a target property column to the merged dataset based on a specified label column.
 - **Custom Headers**: Adds headers to the final dataset for easy identification and readability.
 - **Optional Cleanup**: Deletes all intermediate files and folders to save space and reduce clutter.
 
-### ✅
+## ✅ Requirements
 
 **Important**: The script was tested under **Windows 10** using **PowerShell** and works reliably in this environment on **Python 3.11.4**. It has **not** been tested on Linux or other operating systems.
 
@@ -53,7 +53,9 @@ Ensure the following software and libraries are installed:
    - `art`
    - `tqdm`
 
+   ```markdown
    Install the required Python packages using:
+   ```
 
    ```bash
    pip install rdkit pandas numpy tqdm art
@@ -69,11 +71,11 @@ Ensure the following software and libraries are installed:
 
 ## ⚙️ Installation
 
-Clone the repository and navigate to the project directory:
+Clone the repository from GitHub and navigate to the project directory:
 
 ```bash
-git clone https://github.com/your-username/nmr-ml-input-generator.git
-cd nmr-ml-input-generator
+git clone https://github.com/Prospero1988/Demiurge.git
+cd Demiurge
 ```
 
 ### 🗂 Directory Structure
@@ -197,7 +199,7 @@ Example `test.csv`:
    - Deletes all intermediate files and directories if the `--clean` flag is used.
 
 
-### 🛠 Troubleshooting
+## 🛠 Troubleshooting
 
 1. **Java Compilation Issues**:
    - Ensure that the `javac` and `java` commands are available and the Java SDK is installed.
@@ -212,6 +214,11 @@ Example `test.csv`:
 4. **Memory or Performance Issues**:
    - If handling a large dataset, consider increasing the memory allocation for the Java runtime by adjusting the `-Xmx` parameter in the script.
 
-### 📜 License
+## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+📖 For detailed background and scientific context, see the accompanying publication:  
+(placeholder for DOI and link after publication)
