@@ -159,7 +159,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-/generated_ML_inputs
 generated_ML_inputs/
 demiurge.log
 mols/
@@ -167,7 +166,5 @@ predicted_spectra_1H/
 predicted_spectra_13C/
 merged/
 .spyproject/
-MATRIX_COMPLEX_3/
-MATRIX_complex/
 bucketed_1H_spectra/
 bucketed_13C_spectra/
