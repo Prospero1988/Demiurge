@@ -14,20 +14,21 @@ The script was run as an example for the prediction of 13C NMR spectra with an i
 <p align="center"><IMG SRC="IMG/demiurge_13c2.png" /></p>
 
 ## 📑 Table of Contents
-1. [README](#readme)
-2. [NMR or ECFP4-based Machine Learning Input Generator](#nmr-based-machine-learning-input-generator)
-3. [An example of the finished script run](#An-example-of-the-finished-script-run)
-4. [Features](#features)
-5. [Requirements](#requirements)
-6. [Installation](#installation)
-7. [Directory Structure](#directory-structure)
-8. [Usage](#usage)
-9. [Command Line Arguments](#command-line-arguments)
-10. [Example Usage](#example-usage)
-11. [Input CSV Format](#input-csv-format)
-12. [Script Workflow](#script-workflow)
-13. [Troubleshooting](#troubleshooting)
-14. [License](#license)
+1. [DEMIURGE](#demiurge)
+2. [NMR or ECFP4-based Machine Learning Input Generator](#nmr-or-ecfp4-based-machine-learning-input-generator)
+3. [🖥 Examples of Working Program](#-examples-of-working-program)
+4. [💡 Key Features](#-key-features)
+5. [✅ Requirements](#-requirements)
+6. [⚙️ Installation](#️-installation)
+7. [🗂 Directory Structure](#-directory-structure)
+8. [🚀 Usage](#-usage)
+9. [📄 Command Line Arguments](#-command-line-arguments)
+10. [📄 Example Usage](#-example-usage)
+11. [📄 Input CSV Format](#-input-csv-format)
+12. [⚙️ Script Workflow for NMR-based Output Data (1H / 13C)](#️-script-workflow-for-nmr-based-output-data-1h--13c)
+13. [⚙️ Script Workflow for ECFP4-based Output Data (FP)](#️-script-workflow-for-ecfp4-based-output-data-fp)
+14. [🛠 Troubleshooting](#-troubleshooting)
+15. [📜 License](#-license)
 
 ## 💡Key Features
 
