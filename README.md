@@ -2,7 +2,7 @@
 
 <p align="center"><IMG SRC="IMG/logo.png", width="400px" /></p>
 
-## NMR or ECFP4-based Machine Learning Input Generator
+## NMR or ECFP4-based QSPR Machine Learning Input Generator
 
 Demiurge is a modular and fully automated Python-based platform designed to generate machine learning input data from both simulated spectral and structural molecular representations. Specifically developed to support QSPR studies, it processes chemical structures provided as SMILES strings alongside target properties (e.g., CHI logD), and produces ready-to-use feature matrices for classical ML models and deep neural networks.
 
