@@ -66,9 +66,7 @@ Ensure the following software and libraries are installed:
    - `art`
    - `tqdm`
 
-   ```markdown
    Install the required Python packages using:
-   ```
 
    ```bash
    pip install rdkit pandas numpy tqdm art
@@ -78,9 +76,22 @@ Ensure the following software and libraries are installed:
    ```bash
    python install_modules.py
    ```
-   
+2. **Open Babel**
+   Open Babel is needed to process "exotic" structures that standard RDKit library can not process. Make sure the `obabel` command is available in your system's PATH.
+
 3. **Java SDK**:
    - Java Development Kit (JDK) is required to compile and run the Java batch processor for NMR spectrum prediction. Make sure the `javac` and `java` commands are available in your system's PATH.
+
+### ✅ Conda Environment
+
+If you prefer to use Conda - utilize the provided environment file to create your Conda environment:
+
+```bash
+conda env create -f conda_environment.yml
+conda activate predictor_logD
+```
+
+Then Download & Install Java SDK (tested on version 23). Ensure java and javac are accessible in your PATH. 
 
 ## ⚙️ Installation
 
@@ -125,6 +136,12 @@ To run the script, use the following command:
 
 ```bash
 python demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_column <column_number> [--clean]
+```
+
+If using conda remember to activate enviriment:
+
+```bash
+conda activate predictor_logD
 ```
 
 ### 📄 Command Line Arguments
