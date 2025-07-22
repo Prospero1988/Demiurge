@@ -82,7 +82,7 @@ Ensure the following software and libraries are installed:
 3. **Java SDK**:
    - Java Development Kit (JDK) is required to compile and run the Java batch processor for NMR spectrum prediction. Make sure the `javac` and `java` commands are available in your system's PATH.
 
-### Conda Environment
+### ✅ Conda Environment
 
 If you prefer to use Conda - utilize the provided environment file to create your Conda environment:
 
