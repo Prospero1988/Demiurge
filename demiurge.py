@@ -9,6 +9,7 @@ machine learning inputs from SMILES strings.
 import argparse
 import shutil
 import os
+import re
 import subprocess
 from art import text2art
 
@@ -25,15 +26,35 @@ from demiurge_bin.fp_generator import fp_generator
 # Import sys and define the Tee class
 import sys
 
+def strip_ansi_codes(s):
+    ansi_escape = re.compile(r'''
+        \x1B # ESC
+        (?:   # 7-bit C1 Fe (various sequences)
+            [@-Z\\-_]
+        | # or CSI [ - ].
+            \[
+            [0-?]* # Optional parameters.
+            [-/]* # Optional intermediate bytes.
+            [@-~] # Final byte
+        )
+    ''', re.VERBOSE)
+    return ansi_escape.sub('', s)
+
+# Import sys and define the Tee class
 class Tee(object):
     def __init__(self, *files):
         self.files = files
-    
+
     def write(self, obj):
         for f in self.files:
-            f.write(obj)
+            # Check if the file is a terminal (stdout/stderr)
+            if hasattr(f, 'isatty') and f.isatty():
+                f.write(obj)
+            else:
+                # Remove ANSI codes before writing to file
+                f.write(strip_ansi_codes(obj))
             f.flush()
-    
+
     def flush(self):
         for f in self.files:
             f.flush()
