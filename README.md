@@ -84,7 +84,7 @@ Ensure the following software and libraries are installed:
 
 ### Conda Environment
 
-If you prefer tyo use Conda utilize the provided environment file to create your Conda environment:
+If you prefer to use Conda - utilize the provided environment file to create your Conda environment:
 
 ```bash
 conda env create -f conda_environment.yml
@@ -136,6 +136,12 @@ To run the script, use the following command:
 
 ```bash
 python demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_column <column_number> [--clean]
+```
+
+If using conda remember to activate enviriment:
+
+```bash
+conda activate predictor_logD
 ```
 
 ### 📄 Command Line Arguments
