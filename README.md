@@ -148,8 +148,6 @@ conda activate predictor_logD
 
 ### 📄 Command Line Arguments
 
-### 📄 Command Line Arguments
-
 | Argument           | Required | Accepted Values                        | Description                                                                                                   |
 |--------------------|----------|----------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | `--csv_path`       | ✅ Yes   | *(any valid CSV path)*                | Path to the input CSV file containing compound names and SMILES codes.                                       |
