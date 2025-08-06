@@ -3,7 +3,7 @@
 import os
 
 
-def custom_header(labeled, csv_path, predictor):
+def custom_header(labeled, csv_path, predictor, hybrid):
     """
     Adds custom headers to the provided DataFrame based on the number of
     columns and saves it as a new CSV file.
@@ -54,9 +54,12 @@ def custom_header(labeled, csv_path, predictor):
         except Exception as e:
             print(f"\n{COLORS[1]}Error while checking for NaN values: {e}{RESET}")
 
-        labeled.to_csv(file_name, index=False, sep=',')
-        print(f"\n{COLORS[0]}Final ML INPUT file saved as: {os.path.basename(file_name)} {RESET}"
-              f"{COLORS[0]}in {final_dir}\n{RESET}")
+        if hybrid != 'hybrid':
+            labeled.to_csv(file_name, index=False, sep=',')
+            print(f"\n{COLORS[0]}Final ML INPUT file saved as: {os.path.basename(file_name)} {RESET}"
+                f"{COLORS[0]}in {final_dir}\n{RESET}")
+        else:
+            print(f"\n{COLORS[0]}{predictor} dataset created.{RESET}")
 
     except Exception as e:
         print(f"{COLORS[1]}Error occurred: {e}{RESET}")
