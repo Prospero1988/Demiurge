@@ -148,10 +148,15 @@ conda activate predictor_logD
 
 ### 📄 Command Line Arguments
 
-- `--csv_path`: **[Required]** Path to the input CSV file containing compound names and SMILES codes.
-- `--predictor`: **[Required]** Specifies the type of predictor to use: (`1H` or `13C`) for NMR predictions or (`hybrid`) for fused 1H|13C representation or (`FP`) for ECFP4 Fingerprints.
-- `--label_column`: **[Required]** The column index (1-based) in the input CSV file that contains the target property values.
-- `--clean`: **[Optional]** If set, the script will delete all intermediate temporary files and folders after execution.
+### 📄 Command Line Arguments
+
+| Argument           | Required | Accepted Values                        | Description                                                                                                   |
+|--------------------|----------|----------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| `--csv_path`       | ✅ Yes   | *(any valid CSV path)*                | Path to the input CSV file containing compound names and SMILES codes.                                       |
+| `--predictor`      | ✅ Yes   | `1H`, `13C`, `hybrid`, `FP`            | Type of predictor: `1H` or `13C` for NMR, `hybrid` for fused 1H/13C, or `FP` for ECFP4 fingerprints.         |
+| `--label_column`   | ✅ Yes   | *(integer ≥ 1)*                        | Column index (1-based) in the input CSV file that contains the target property values.                       |
+| `--clean`          | ❌ No    | *(flag, no value)*                    | If set, the script will delete all intermediate temporary files and folders after execution.                 |
+
 
 ### 📄 Example Usage
 
