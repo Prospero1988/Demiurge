@@ -6,9 +6,9 @@
 
 Demiurge is a modular and fully automated Python-based platform designed to generate machine learning input data from both simulated spectral and structural molecular representations. Specifically developed to support QSPR studies, it processes chemical structures provided as SMILES strings alongside target properties (e.g., CHI logD), and produces ready-to-use feature matrices for classical ML models and deep neural networks.
 
-The tool supports three representation modes: predicted **¹H NMR** spectra, **¹³C NMR** spectra, and **ECFP4** molecular fingerprints. Input files in `.csv` format are validated for SMILES integrity and formatting. Molecular structures are reconstructed using **RDKit**, optimized in 3D, then flattened to 2D to comply with NMR prediction tools.
+The tool supports four representation modes: predicted **¹H NMR** spectra, **¹³C NMR** spectra, concatenated **¹H | ¹³C** spectral vectors and **ECFP4** molecular fingerprints. Input files in `.csv` format are validated for SMILES integrity and formatting. Molecular structures are reconstructed using **RDKit** or **obabel**, optimized in 3D, then flattened to 2D to comply with NMR prediction tools.
 
-NMR spectral predictions are performed locally using a standalone Java-based engine built on the **NMRshiftDB2** database, utilizing **HOSE-code** pattern matching. The resulting chemical shift lists are then transformed into fixed-length spectral vectors through a custom bucketing strategy (200 bins per nucleus, but can be changed in bucketing module script), enabling compatibility with ML pipelines.
+NMR spectral predictions are performed locally using a standalone Java-based engine built on the **NMRshiftDB2** database, utilizing **HOSE-code** pattern matching. The resulting chemical shift lists are then transformed into fixed-length spectral vectors through a custom bucketing strategy (200 bins per nucleus, but can be changed in bucketing module script), enabling compatibility with ML pipelines. In the fused representation, the 1H and 13C vectors are joined together head to tail.
 
 For ECFP4 generation, **RDKit's Morgan fingerprinting** (radius = 2) is used to construct 2048-bit binary descriptors. All generated feature matrices are merged with property labels (e.g., CHI logD), headers are appended, and the final datasets are saved as `.csv` files.
 
@@ -51,6 +51,7 @@ The script was run as an example for the prediction of 13C NMR spectra with an i
 - **Data Merging**: Merges the bucketized spectra/fingerprints with property labels to form a consolidated dataset.
 - **Label Insertion**: Adds a target property column to the merged dataset based on a specified label column.
 - **Custom Headers**: Adds headers to the final dataset for easy identification and readability.
+- **Data Concatenation**: 1H and 13C Representations are fused into new hybrid representation.
 - **Optional Cleanup**: Deletes all intermediate files and folders to save space and reduce clutter.
 
 ## ✅ Requirements
@@ -120,6 +121,7 @@ demiurge/
 │   └── BatchProcessor13C.java     # Java batch processor for 13C spectra [NMRshiftDB2]
 ├── logD_predictor_bin/            # Directory containing helper modules
 │   ├── csv_checker.py             # Verifies and preprocesses CSV files
+│   ├── concatenator.py            # Concatenate 1H and 13C matrices into new fused matrix
 │   ├── gen_mols.py                # Generates .mol files from SMILES strings
 │   ├── bucket.py                  # Buckets NMR spectra
 │   ├── merger.py                  # Merges bucketed spectra CSVs
@@ -147,7 +149,7 @@ conda activate predictor_logD
 ### 📄 Command Line Arguments
 
 - `--csv_path`: **[Required]** Path to the input CSV file containing compound names and SMILES codes.
-- `--predictor`: **[Required]** Specifies the type of predictor to use: (`1H` or `13C`) for NMR predictions or (`FP`) for ECFP4 Fingerprints.
+- `--predictor`: **[Required]** Specifies the type of predictor to use: (`1H` or `13C`) for NMR predictions or (`hybrid`) for fused 1H|13C representation or (`FP`) for ECFP4 Fingerprints.
 - `--label_column`: **[Required]** The column index (1-based) in the input CSV file that contains the target property values.
 - `--clean`: **[Optional]** If set, the script will delete all intermediate temporary files and folders after execution.
 
@@ -163,6 +165,20 @@ In this example:
 - It will predict the 1H NMR spectra for each molecule.
 - The spectra will be bucketized and merged into a single file.
 - The target property values from `column 3` in `test.csv` will be added as labels.
+- All intermediate files and directories will be deleted after execution due to the `--clean` option.
+
+```bash
+python demiurge.py --csv_path test.csv --predictor 'hybrid' --label_column 3 --clean
+```
+
+In this example:
+- The script will read the input CSV file `test.csv`.
+- It will generate `.mol` files for each molecule based on its SMILES code.
+- It will predict the 1H NMR spectra for each molecule.
+- The spectra will be bucketized and merged into a single file.
+- The target property values from `column 3` in `test.csv` will be added as labels.
+- Script predicts 13C, buckets, merges and adds propety colums as for 1H data.
+- 1H and 13C matrices are fused into concatenated representation 1H|13C.
 - All intermediate files and directories will be deleted after execution due to the `--clean` option.
 
 ```bash
@@ -210,6 +226,32 @@ Example `test.csv`:
 
 6. **Step 6: Cleanup (Optional)**:
    - Deletes all intermediate files and directories if the `--clean` option is specified.
+     
+
+### ⚙️ Script Workflow for NMR-based Concatenated Output Data (1H|13C)
+
+1. **Step 1: Generate `.mol` Files**:
+   - Reads SMILES codes from the input CSV file and generates corresponding `.mol` files using RDKit.
+
+2. **Step 2: Predict NMR Spectra**:
+   - Uses the Java-based `BatchProcessor1H` or `BatchProcessor13C` to predict NMR spectra for each molecule. Predictor is part of [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) database.
+
+3. **Step 3: Bucketize Spectra**:
+   - Converts the predicted spectra into a uniform bucketized matrix for easy analysis and machine learning input generation.
+
+4. **Step 4: Merge Spectra and Labels**:
+   - Merges the bucketized spectra with the specified label column from the input CSV file.
+
+5. **Step 5: Add Custom Headers**:
+   - Adds descriptive headers to the final merged CSV file, making it easier to interpret and use for machine learning tasks.
+   - 
+6. **Step 5: Concatenation od 1H adn 13C**:
+   - The script connects 1H and 13C vectors head-to-tail. It combines representations for the same MOLECULE_NAME and for the same label value.
+
+8. **Step 7: Cleanup (Optional)**:
+   - Deletes all intermediate files and directories if the `--clean` option is specified.
+
+
 
 ### ⚙️ Script Workflow for ECFP4-based Output Data (FP)
 
