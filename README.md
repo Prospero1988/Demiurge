@@ -156,7 +156,7 @@ conda activate predictor_logD
 ### 📄 Example Usage
 
 ```bash
-python demiurge.py --csv_path test.csv --predictor 1H --label_column 3 --clean
+python demiurge.py --csv_path 'test.csv' --predictor '1H' --label_column 3 --clean
 ```
 
 In this example:
@@ -168,7 +168,7 @@ In this example:
 - All intermediate files and directories will be deleted after execution due to the `--clean` option.
 
 ```bash
-python demiurge.py --csv_path test.csv --predictor 'hybrid' --label_column 3 --clean
+python demiurge.py --csv_path 'test.csv' --predictor 'hybrid' --label_column 3 --clean
 ```
 
 In this example:
@@ -182,7 +182,7 @@ In this example:
 - All intermediate files and directories will be deleted after execution due to the `--clean` option.
 
 ```bash
-python demiurge.py --csv_path test.csv --predictor FP --label_column 3 --clean
+python demiurge.py --csv_path 'test.csv' --predictor 'FP' --label_column 3 --clean
 ```
 
 In this example:
