@@ -54,12 +54,13 @@ def custom_header(labeled, csv_path, predictor, hybrid):
         except Exception as e:
             print(f"\n{COLORS[1]}Error while checking for NaN values: {e}{RESET}")
 
-        if hybrid != 'hybrid':
+        if hybrid not in ('hybrid', 'total'):
             labeled.to_csv(file_name, index=False, sep=',')
             print(f"\n{COLORS[0]}Final ML INPUT file saved as: {os.path.basename(file_name)} {RESET}"
                 f"{COLORS[0]}in {final_dir}\n{RESET}")
         else:
-            print(f"\n{COLORS[0]}{predictor} dataset created.{RESET}")
+            # Nie zapisuj pliku dla trybów złożonych (hybrid/total) – tylko komunikat
+            print(f"\n{COLORS[0]}{predictor} dataset created for {hybrid}.{RESET}")
 
     except Exception as e:
         print(f"{COLORS[1]}Error occurred: {e}{RESET}")

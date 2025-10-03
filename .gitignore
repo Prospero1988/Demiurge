@@ -169,3 +169,4 @@ merged/
 bucketed_1H_spectra/
 bucketed_13C_spectra/
 .vscode
+*.csv

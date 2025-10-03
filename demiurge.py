@@ -100,10 +100,9 @@ def main():
             "--predictor",
             type=str,
             required=True,
-            choices=["1H", "13C", "FP", "hybrid"],
-            help="Type of NMR Predictor to use: '1H' or '13C'. You can also "
-            "generate from RDKit FingerPrints not from NMR Spectra, "
-            "use argument: 'FP'"
+            choices=["1H", "13C", "FP", "hybrid", "total"],  # + "total"
+            help=("Type of predictor: '1H', '13C', 'FP', 'hybrid' (¹H+¹³C) "
+                "or 'total' (¹H+¹³C+ECFP4).")
         )
         parser.add_argument(
             "--label_column",
@@ -232,6 +231,85 @@ def main():
 
             _, saved_path = concatenate(datasets, output_path=hybrid_csv)
             print(f"{COLORS[0]}Hybrid input saved →{RESET} {saved_path}")
+
+            temp_data.append(mol_directory)
+
+
+        # ------------------------------------------------------------------
+        # TOTAL (¹H + ¹³C + ECFP4) WORKFLOW
+        # ------------------------------------------------------------------
+
+        elif predictor == 'total':
+
+            datasets: list[Union[str, DataFrame]] = []
+            final_dir = os.path.join(os.getcwd(), "generated_ML_inputs")
+            os.makedirs(final_dir, exist_ok=True)      
+
+            for sub_predictor in ['1H', '13C']:
+
+                # Step 2: Generate .mol files from SMILES strings
+                if mol_directory is None:     
+                    mol_directory = generate_mol_files(verified_csv_path)
+
+                # Step 3: Predict NMR spectra and save results as .csv files
+                csv_output_folder = run_java_batch_processor(mol_directory, sub_predictor)
+
+                # Step 4: Perform bucketing to generate pseudo NMR spectra
+                processed_dir = bucket(csv_output_folder, sub_predictor)
+
+                # Step 5: Merge spectra in CSV format into one matrix file
+                merge_res = merger(processed_dir, verified_csv_path)
+                if isinstance(merge_res, tuple):
+                    output_path, merged_dir = merge_res
+                else:
+                    output_path = merge_res
+                    merged_dir = os.path.dirname(output_path) if output_path else ""
+
+                # Step 6: Insert labels into the merged files
+                labeled = labeler(verified_csv_path, output_path,
+                                  args.label_column, merged_dir)
+                
+                # Step 7: Create custom headers for the final dataset
+                custom_header(labeled, verified_csv_path, sub_predictor, predictor)
+
+                # ---- collect file for later concatenation ----
+                datasets.append(labeled)       # use the real CSV path
+
+                temp_data.extend([csv_output_folder, processed_dir, merged_dir])
+
+            for sub_predictor in ['FP']:
+                # Step 2 - 4: Generate FingerPrint files
+                processed_dir = fp_generator(verified_csv_path)
+
+                # Step 5: Merge spectra in CSV format into one matrix file
+                merge_res = merger(processed_dir, verified_csv_path)
+                if isinstance(merge_res, tuple):
+                    output_path, merged_dir = merge_res
+                else:
+                    output_path = merge_res
+                    merged_dir = os.path.dirname(output_path) if output_path else ""
+            
+                # Step 6: Insert labels into the merged files
+                labeled = labeler(
+                    verified_csv_path, output_path, args.label_column, merged_dir
+                )
+            
+                # Step 7: Create custom headers for the final dataset
+                custom_header(labeled, verified_csv_path, sub_predictor, predictor)
+        
+                datasets.append(labeled)       # use the real CSV path
+
+                temp_data.extend([processed_dir, merged_dir])
+
+            # ------------------------------------------------------------------
+            # CONCATENATE ¹H + ¹³C + ECFP4
+            # ------------------------------------------------------------------
+
+            base_name = Path(args.csv_path).stem
+            total_csv = os.path.join(final_dir, f"{base_name}_TOTAL_ML_input.csv")
+
+            _, saved_path = concatenate(datasets, output_path=total_csv)
+            print(f"{COLORS[0]}Total input saved →{RESET} {saved_path}")
 
             temp_data.append(mol_directory)
 
