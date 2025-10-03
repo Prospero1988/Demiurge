@@ -5,10 +5,14 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.openscience.cdk.DefaultChemObjectBuilder;
 import org.openscience.cdk.interfaces.IAtom;
@@ -22,41 +26,50 @@ import org.openscience.cdk.graph.Cycles;
 import org.openscience.nmrshiftdb.PredictionTool;
 import org.openscience.nmrshiftdb.util.AtomUtils;
 
+import javax.vecmath.Point3d;
+
 /**
- * The BatchProcessor13C class processes a batch of .mol files in parallel (8 threads)
- * to predict 13C NMR chemical shifts. It reads molecular files, applies 3D geometry
- * and chemical property detection, and writes the results to CSV files.
+ * BatchProcessor13C
+ * -----------------
+ * Predicts 13C NMR shifts for .mol files in parallel (8 threads).
+ * - Validates 3D; if --use3d and 3D invalid, silently tries to rebuild 3D (CDK ModelBuilder3D via reflection).
+ * - Suppresses CDK builder spam by muting System.out/err ONLY during rebuild (protected by a global lock).
+ * - If ANY exception occurs during 3D prediction for a molecule, it silently retries that molecule in 2D
+ *   and fixes the counters.
+ * - Progress bar + final summary (3D native / 3D rebuilt / 2D).
  */
 public class BatchProcessor13C {
 
-    // A volatile counter to track processed .mol files (thread-safe increment).
-    private static volatile int processedFileCount = 0;
+    // Global sync so progress/summary prints never happen while stdout/err are muted
+    private static final Object MUTE_LOCK = new Object();
 
-    // ANSI color codes for output formatting
-    private static final String ANSI_GREEN = "\033[38;5;46m";  // Green
-    private static final String ANSI_RED   = "\033[31m";       // Red
-    private static final String ANSI_RESET = "\033[0m";        // Reset
+    // Progress counter (for the progress bar)
+    private static final AtomicInteger processedFileCount = new AtomicInteger(0);
 
-    /**
-     * Processes a single .mol file to predict 13C NMR chemical shifts and saves the results to a CSV file.
-     *
-     * @param molFile     The .mol file to be processed.
-     * @param csvFilePath The file path where the CSV file will be saved.
-     * @param solvent     The solvent used for prediction (default "Unreported").
-     * @param use3d       Whether to use 3D molecular data for the prediction.
-     */
+    // Summary counters (counted once per file)
+    private static final AtomicInteger count3D_native  = new AtomicInteger(0);
+    private static final AtomicInteger count3D_rebuilt = new AtomicInteger(0);
+    private static final AtomicInteger count2D         = new AtomicInteger(0);
+
+    // Log "builder missing" only once (concise)
+    private static final AtomicBoolean builderMissingLogged = new AtomicBoolean(false);
+
+    // ANSI colors (optional)
+    private static final String ANSI_GREEN = "\033[38;5;46m";
+    private static final String ANSI_RED   = "\033[31m";
+    private static final String ANSI_RESET = "\033[0m";
+
     private static void processMolFile(File molFile, String csvFilePath, String solvent, boolean use3d) {
         try {
-            // 1. Determine if the file is V2000 or V3000
+            // 1) Detect V2000 vs V3000
             BufferedReader br = new BufferedReader(new FileReader(molFile));
-            br.readLine(); // Skip line 1
-            br.readLine(); // Skip line 2
-            br.readLine(); // Skip line 3
+            br.readLine(); // 1
+            br.readLine(); // 2
+            br.readLine(); // 3
             String line4 = br.readLine();
             br.close();
 
             IAtomContainer mol;
-
             if (line4 != null && line4.contains("V3000")) {
                 MDLV3000Reader mdlreader3000 = new MDLV3000Reader(new FileReader(molFile));
                 mol = mdlreader3000.read(DefaultChemObjectBuilder.getInstance().newInstance(IAtomContainer.class));
@@ -65,57 +78,177 @@ public class BatchProcessor13C {
                 mol = mdlreader.read(DefaultChemObjectBuilder.getInstance().newInstance(IAtomContainer.class));
             }
 
-            // 2. Add hydrogens
+            // 2) Add hydrogens
             AtomUtils.addAndPlaceHydrogens(mol);
 
-            // 3. Skip if molecule has down, down_inverted, or up_inverted wedge bonds
-            //if (containsDownOrInvertedUpWedge(mol)) {
-            //    System.err.println("Skipping molecule " + molFile.getName()
-            //            + " due to down or inverted up wedge bond(s).");
-            //    return;
-            //}
-
-            // 4. Apply aromaticity
+            // 3) Aromaticity
             Aromaticity aromaticity = new Aromaticity(ElectronDonation.cdk(), Cycles.cdkAromaticSet());
             aromaticity.apply(mol);
 
-            // 5. Initialize the NMRShiftDB prediction tool
-            PredictionTool predictor = new PredictionTool();
+            // 4) Decide 3D usage (silent rebuild attempt if invalid)
+            boolean use3dEffective = use3d;
+            boolean rebuilt = false;
 
-            // 6. Write predicted shifts to the CSV file
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFilePath))) {
-                int atomCount = mol.getAtomCount();
-                for (int i = 0; i < atomCount; i++) {
-                    IAtom curAtom = mol.getAtom(i);
-
-                    // Predict 13C NMR shifts only if this atom is hydrogen
-                    if (curAtom.getAtomicNumber() == 6) {
-                        float[] result = predictor.predict(mol, curAtom, use3d, solvent);
-                        if (result != null) {
-                            writer.write(String.format(Locale.US, "%.2f\n", result[1]));
-                        }
+            if (use3d && hasBad3D(mol)) {
+                if (regenerate3DInPlaceSilently(mol)) {
+                    if (!hasBad3D(mol)) {
+                        use3dEffective = true;
+                        rebuilt = true;
+                    } else {
+                        use3dEffective = false;
                     }
+                } else {
+                    use3dEffective = false;
                 }
             }
 
-            synchronized (BatchProcessor13C.class) {
-                processedFileCount++;
+            // Count once per file (may be adjusted if fallback 3D->2D happens later)
+            if (use3dEffective) {
+                if (rebuilt) count3D_rebuilt.incrementAndGet();
+                else         count3D_native.incrementAndGet();
+            } else {
+                count2D.incrementAndGet();
             }
 
+            // 5) Predict and write CSV with safe retry (3D -> 2D on ANY exception)
+            writePredictionsWithRetry(molFile.getName(), mol, csvFilePath, solvent, use3dEffective, rebuilt);
+
+            processedFileCount.incrementAndGet();
+
         } catch (Exception e) {
-            System.err.println(ANSI_RED + "Error while processing file "
-                               + molFile.getName() + ": " + e.getMessage() + ANSI_RESET);
-            e.printStackTrace();
+            synchronized (MUTE_LOCK) {
+                System.err.println(ANSI_RED + "Error while processing file "
+                        + molFile.getName() + ": " + e.getMessage() + ANSI_RESET);
+            }
+            processedFileCount.incrementAndGet(); // keep progress moving
         }
     }
 
     /**
-     * Checks if the molecule contains a "down", "down_inverted", or "up_inverted" wedge bond.
-     * Only in those cases do we skip the molecule.
-     *
-     * @param mol The IAtomContainer to inspect.
-     * @return true if the molecule has at least one bond with DOWN, DOWN_INVERTED, or UP_INVERTED stereo.
+     * Try predicting in the chosen mode. If any exception occurs in 3D, redo the molecule in 2D silently
+     * and fix counters, then write the CSV.
      */
+    private static void writePredictionsWithRetry(String fileName,
+                                                  IAtomContainer mol,
+                                                  String csvFilePath,
+                                                  String solvent,
+                                                  boolean use3dEffectiveInitial,
+                                                  boolean initialWasRebuilt3D) throws Exception {
+        PredictionTool predictor = new PredictionTool();
+
+        java.util.function.Function<Boolean, ArrayList<String>> runOnce = (use3dFlag) -> {
+            ArrayList<String> lines = new ArrayList<>();
+            int atomCount = mol.getAtomCount();
+            for (int i = 0; i < atomCount; i++) {
+                IAtom curAtom = mol.getAtom(i);
+                if (curAtom.getAtomicNumber() == 6) { // 13C only
+                    try {
+                        // IMPORTANT: catch checked exceptions HERE and wrap → lambda stays valid.
+                        float[] result = predictor.predict(mol, curAtom, use3dFlag, solvent);
+                        if (result != null) {
+                            lines.add(String.format(Locale.US, "%.2f%n", result[1]));
+                        }
+                    } catch (Exception e) {
+                        throw new RuntimeException(e); // wrapped for outer retry logic
+                    }
+                }
+            }
+            return lines;
+        };
+
+        try {
+            // First attempt in the initially chosen mode (3D or 2D)
+            ArrayList<String> lines = runOnce.apply(use3dEffectiveInitial);
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFilePath))) {
+                for (String s : lines) writer.write(s);
+            }
+        } catch (RuntimeException any3dEx) {
+            // Any exception during 3D -> retry 2D silently
+            if (use3dEffectiveInitial) {
+                // fix counters: remove the 3D count we added earlier, add 2D instead
+                if (initialWasRebuilt3D) {
+                    count3D_rebuilt.decrementAndGet();
+                } else {
+                    count3D_native.decrementAndGet();
+                }
+                count2D.incrementAndGet();
+
+                ArrayList<String> lines2d = runOnce.apply(false);
+                try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFilePath))) {
+                    for (String s : lines2d) writer.write(s);
+                }
+            } else {
+                // already 2D; propagate
+                throw any3dEx;
+            }
+        }
+    }
+
+    private static boolean hasBad3D(IAtomContainer mol) {
+        if (mol == null) return true;
+        for (IAtom a : mol.atoms()) {
+            Point3d p = a.getPoint3d();
+            if (p == null) return true;
+            if (Double.isNaN(p.x) || Double.isNaN(p.y) || Double.isNaN(p.z)) return true;
+            if (Double.isInfinite(p.x) || Double.isInfinite(p.y) || Double.isInfinite(p.z)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Rebuild 3D in-place using CDK ModelBuilder3D via reflection, with System.out/err muted ONLY
+     * inside a synchronized block protected by MUTE_LOCK (so progress/summary never print while muted).
+     */
+    private static boolean regenerate3DInPlaceSilently(IAtomContainer mol) {
+        PrintStream originalErr;
+        PrintStream originalOut;
+        PrintStream devNull = new PrintStream(OutputStream.nullOutputStream());
+        synchronized (MUTE_LOCK) {
+            originalErr = System.err;
+            originalOut = System.out;
+            System.setErr(devNull);
+            System.setOut(devNull);
+            try {
+                try {
+                    Class<?> mb3dClass = Class.forName("org.openscience.cdk.modeling.builder3d.ModelBuilder3D");
+                    java.lang.reflect.Method getInstance =
+                            mb3dClass.getMethod("getInstance", org.openscience.cdk.interfaces.IChemObjectBuilder.class);
+                    Object builder3d = getInstance.invoke(null, DefaultChemObjectBuilder.getInstance());
+                    java.lang.reflect.Method generate =
+                            mb3dClass.getMethod("generate3DCoordinates",
+                                    org.openscience.cdk.interfaces.IAtomContainer.class, boolean.class);
+                    Object newMolObj = generate.invoke(builder3d, mol, Boolean.TRUE);
+                    IAtomContainer newMol = (IAtomContainer) newMolObj;
+                    int n = Math.min(mol.getAtomCount(), newMol.getAtomCount());
+                    for (int i = 0; i < n; i++) {
+                        IAtom a = mol.getAtom(i);
+                        IAtom b = newMol.getAtom(i);
+                        a.setPoint3d(b.getPoint3d());
+                    }
+                    return true;
+                } catch (ClassNotFoundException e) {
+                    if (builderMissingLogged.compareAndSet(false, true)) {
+                        // Print concise info AFTER unmuting (below)
+                    }
+                    return false;
+                } catch (Throwable t) {
+                    return false;
+                }
+            } finally {
+                System.setErr(originalErr);
+                System.setOut(originalOut);
+                devNull.close();
+
+                if (builderMissingLogged.compareAndSet(true, false)) {
+                    synchronized (MUTE_LOCK) {
+                        System.err.println("Info: CDK 3D builder (cdk-builder3d) not on classpath → skipping 3D rebuild.");
+                    }
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("unused")
     private static boolean containsDownOrInvertedUpWedge(IAtomContainer mol) {
         if (mol == null) return false;
         for (IBond bond : mol.bonds()) {
@@ -129,116 +262,103 @@ public class BatchProcessor13C {
         return false;
     }
 
-    /**
-     * Prints a dynamic progress bar to indicate the processing progress.
-     *
-     * @param current Number of processed files so far.
-     * @param total   Total number of files to process.
-     */
     private static void printProgress(int current, int total) {
         int barLength = 25;
-        int filledLength = (int) (barLength * ((double) current / total));
+        int filledLength = (int) (barLength * ((double) current / Math.max(total, 1)));
 
         StringBuilder bar = new StringBuilder();
-        for (int i = 0; i < filledLength; i++) {
-            bar.append(ANSI_GREEN).append("█").append(ANSI_RESET);
-        }
-        for (int i = filledLength; i < barLength; i++) {
-            bar.append("-");
-        }
+        for (int i = 0; i < filledLength; i++) bar.append('█');
+        for (int i = 0; i < barLength - filledLength; i++) bar.append('-');
 
-        int percent = (int) (100.0 * current / total);
+        int percent = (int) (100.0 * current / Math.max(total, 1));
 
-        System.out.print("\rProgress: |" + bar + "| " + current + "/" + total + " (" + percent + "%)");
-        System.out.flush();
-
-        if (current == total) {
-            System.out.println(" ");
+        synchronized (MUTE_LOCK) {
+            System.out.print("\rProgress: |" + bar + "| " + current + "/" + total + " (" + percent + "%)");
+            System.out.flush();
+            if (current >= total) System.out.println(" ");
         }
     }
 
-    /**
-     * Main method for batch processing .mol files (in parallel with 8 threads).
-     *
-     * Command-line arguments:
-     *   args[0] - the input folder containing .mol files
-     *   args[1] - the output folder for CSV files
-     *   args[2] (optional) - the solvent for prediction
-     *   args[3] (optional) - "no3d" to disable 3D data usage
-     */
     public static void main(String[] args) {
-        // Check for required arguments
         if (args.length < 2) {
-            System.err.println(ANSI_RED
-                    + "Usage: java BatchProcessor13C <inputFolder> <outputFolder> [solvent] [no3d]"
-                    + ANSI_RESET);
+            synchronized (MUTE_LOCK) {
+                System.err.println(ANSI_RED
+                        + "Usage: java predictor.BatchProcessor13C <inputFolder> <outputFolder> [solvent] [no3d]"
+                        + ANSI_RESET);
+            }
             System.exit(1);
         }
 
-        // Parse input
         File inputFolder = new File(args[0]);
         File outputFolder = new File(args[1]);
-        String solvent = "Unreported"; // default
+        String solvent = "Unreported";
         boolean use3d = true;
 
         if (!inputFolder.isDirectory() || !outputFolder.isDirectory()) {
-            System.err.println(ANSI_RED + "Input or output folder is not a directory." + ANSI_RESET);
+            synchronized (MUTE_LOCK) {
+                System.err.println(ANSI_RED + "Input or output folder is not a directory." + ANSI_RESET);
+            }
             System.exit(1);
         }
 
-        if (args.length >= 3) {
-            solvent = args[2];
-        }
-        if (args.length >= 4 && args[3].equalsIgnoreCase("no3d")) {
-            use3d = false;
-        }
+        if (args.length >= 3) solvent = args[2];
+        if (args.length >= 4 && "no3d".equalsIgnoreCase(args[3])) use3d = false;
 
-        // Gather all .mol files
-        File[] molFiles = inputFolder.listFiles((dir, name) -> name.endsWith(".mol"));
+        File[] molFiles = inputFolder.listFiles((dir, name) -> name.toLowerCase().endsWith(".mol"));
         if (molFiles == null || molFiles.length == 0) {
-            System.err.println(ANSI_RED + "No .mol files found in the input folder." + ANSI_RESET);
-            return;
+            synchronized (MUTE_LOCK) {
+                System.err.println(ANSI_RED + "No .mol files found in the input folder." + ANSI_RESET);
+            }
+            System.exit(1);
         }
 
-        final int totalFiles = molFiles.length;
+        final File outputFolderFinal = outputFolder;
+        final String solventFinal = solvent;
+        final boolean use3dFinal = use3d;
+        final int total = molFiles.length;
 
-        // Because lambdas in older Java versions require effectively final variables:
-        final File finalOutputFolder = outputFolder;
-        final String finalSolvent = solvent;
-        final boolean finalUse3d = use3d;
-
-        // Create a fixed thread pool of 8
         int numThreads = 8;
-        System.out.println("Using " + numThreads + " threads (3D set to: " + finalUse3d + ")");
-        java.util.concurrent.ExecutorService executor
-                = java.util.concurrent.Executors.newFixedThreadPool(numThreads);
+        synchronized (MUTE_LOCK) {
+            System.out.println("Using " + numThreads + " threads (3D set to: " + use3dFinal + ")");
+        }
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
-        // Submit tasks for each file
         for (File molFile : molFiles) {
             executor.submit(() -> {
-                String csvFilePath = new File(finalOutputFolder,
+                String csvFilePath = new File(outputFolderFinal,
                         molFile.getName().replace(".mol", ".csv")).getPath();
-                processMolFile(molFile, csvFilePath, finalSolvent, finalUse3d);
+
+                processMolFile(molFile, csvFilePath, solventFinal, use3dFinal);
+
+                // Update progress bar after each file
+                printProgress(processedFileCount.get(), total);
             });
         }
 
-        // Shutdown the executor and wait for tasks to finish
         executor.shutdown();
         try {
-            while (!executor.awaitTermination(500, TimeUnit.MILLISECONDS)) {
-                // Update progress bar in the meantime
-                printProgress(processedFileCount, totalFiles);
-            }
+            executor.awaitTermination(7, java.util.concurrent.TimeUnit.DAYS);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            Thread.currentThread().interrupt();
         }
 
-        // Final update of the progress bar
-        printProgress(processedFileCount, totalFiles);
-        System.out.println();
+        // Close progress + summary (under lock to avoid being muted)
+        printProgress(processedFileCount.get(), total);
 
-        System.out.println(ANSI_GREEN
-                + "Total number of .mol files processed for 13C NMR prediction: "
-                + processedFileCount + ANSI_RESET);
+        int n3dNative  = count3D_native.get();
+        int n3dRebuilt = count3D_rebuilt.get();
+        int n2d        = count2D.get();
+
+        synchronized (MUTE_LOCK) {
+            System.out.println();
+            System.out.println("Summary:");
+            System.out.println("  3D (native):  " + n3dNative  + " molecule(s)");
+            System.out.println("  3D (rebuilt): " + n3dRebuilt + " molecule(s)");
+            System.out.println("  2D:           " + n2d        + " molecule(s)");
+
+            System.out.println(ANSI_GREEN
+                    + "Total number of .mol files processed for 13C NMR prediction: "
+                    + processedFileCount.get() + ANSI_RESET);
+        }
     }
 }
