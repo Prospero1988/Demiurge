@@ -18,6 +18,20 @@ The architecture is fully extensible and easily adaptable to other endpoints suc
 
 The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
 
+---
+
+### 📖 Associated Research & Citation
+
+**For more detailed information, check the original Open Access research paper:**
+
+Leniak, A.; Pietruś, W.; Kurczab, R. From NMR to AI: Fusing 1H and 13C Representations 
+for Enhanced QSPR Modeling. J Chem Inf Model 2025. 
+[https://doi.org/10.1021/acs.jcim.5c01791](https://doi.org/10.1021/acs.jcim.5c01791).
+
+**If you use this software in your research, please cite our publication.**
+
+---
+
 ## 🖥 Examples of Working Program
 
 The script was run as an example for the prediction of 13C NMR spectra with an input file containing a misdefined one of the rows. In addition, a comma was inserted as the decimal separator and a semicolon was inserted as the column separator.
@@ -294,6 +308,3 @@ Example `test.csv`:
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
-
-📖 For detailed background and scientific context, see the accompanying publication:  
-(placeholder for DOI and link after publication)
