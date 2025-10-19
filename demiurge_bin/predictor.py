@@ -68,6 +68,21 @@ def run_java_batch_processor(mol_directory, predictor):
     if os.path.isfile(cdk_builder3d):
         cp_run.insert(2, cdk_builder3d)
 
+    # --- UTF-8 fixes for JVM ---
+    # 1) JVM opts wymuszające UTF-8 (stdout/stderr, parsowanie znaków, itp.)
+    jvm_opts = "-Xmx8g -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8"
+    # 2) Dodatkowo podajemy JAVA_TOOL_OPTIONS (JVM i tak to czyta), gdyby ktoś nadpisał file.encoding
+    env = os.environ.copy()
+    extra_tool_opts = "-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8"
+    env["JAVA_TOOL_OPTIONS"] = (env.get("JAVA_TOOL_OPTIONS", "") + " " + extra_tool_opts).strip()
+
+    # (opcjonalnie) na Windows ustaw konsolę na UTF-8, żeby inne narzędzia też drukowały poprawnie
+    if platform.system() == "Windows":
+        try:
+            subprocess.run("chcp 65001 >NUL", shell=True, check=False)
+        except Exception:
+            pass
+
     compile_command = (
         f'javac -classpath "{cp_sep.join(cp_compile)}" '
         f'-d . -Xlint:-options -Xlint:deprecation -proc:none "{batch_java}"'
