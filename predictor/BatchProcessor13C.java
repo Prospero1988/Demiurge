@@ -143,7 +143,7 @@ public class BatchProcessor13C {
                 IAtom curAtom = mol.getAtom(i);
                 if (curAtom.getAtomicNumber() == 6) { // 13C only
                     try {
-                        // IMPORTANT: catch checked exceptions HERE and wrap → lambda stays valid.
+                        // IMPORTANT: catch checked exceptions HERE and wrap -> lambda stays valid.
                         float[] result = predictor.predict(mol, curAtom, use3dFlag, solvent);
                         if (result != null) {
                             lines.add(String.format(Locale.US, "%.2f%n", result[1]));
@@ -241,7 +241,7 @@ public class BatchProcessor13C {
 
                 if (builderMissingLogged.compareAndSet(true, false)) {
                     synchronized (MUTE_LOCK) {
-                        System.err.println("Info: CDK 3D builder (cdk-builder3d) not on classpath → skipping 3D rebuild.");
+                        System.err.println("Info: CDK 3D builder (cdk-builder3d) not on classpath -> skipping 3D rebuild.");
                     }
                 }
             }
@@ -267,7 +267,7 @@ public class BatchProcessor13C {
         int filledLength = (int) (barLength * ((double) current / Math.max(total, 1)));
 
         StringBuilder bar = new StringBuilder();
-        for (int i = 0; i < filledLength; i++) bar.append('█');
+        for (int i = 0; i < filledLength; i++) bar.append('\u2588');
         for (int i = 0; i < barLength - filledLength; i++) bar.append('-');
 
         int percent = (int) (100.0 * current / Math.max(total, 1));
