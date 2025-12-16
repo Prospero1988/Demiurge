@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Generate 2D MOL files from SMILES strings (parallel, chunked by CPU).
+Generate 2 D MOL files from SMILES strings.
 
 Pipeline
 --------
 1.  Canonicalise the SMILES.
 2.  Add explicit hydrogens.
-3.  Try to embed a 3D conformer with ETKDG (3 retries).
-    • If ETKDG fails → fall back to RDKit CoordGen (2D).
+3.  Try to embed a 3 D conformer with ETKDG (3 retries).
+    • If ETKDG fails → fall back to RDKit CoordGen (2 D).
 4.  Force a switch to OpenBabel for molecules that
     contain hyper-valent sulphur (valence > 4) or after an
     ETKDG failure.
     • obabel -d --gen2D strips wedge bonds and flattens the structure.
-5.  Write a V3000 MOL file (2D coordinates, no stereo wedges).
+5.  Write a V3000 MOL file (2 D coordinates, no stereo wedges).
 6.  Log errors to *mol_creation_error.log* and all fall-backs/
     warnings to *mol_creation_warning.log*.
 
@@ -29,14 +29,14 @@ import os
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
-from multiprocessing import Pool
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 import pandas as pd
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, rdCoordGen
 
+# Silence all RDKit log output (optional but recommended)
+RDLogger.DisableLog("rdApp.*")
 
 # ──────────────────────────────────────────────────────────────
 # Configuration
@@ -54,16 +54,11 @@ EMBED_RANDOM_SEED = 42
 # ──────────────────────────────────────────────────────────────
 # Helper functions
 # ──────────────────────────────────────────────────────────────
-def _worker_init() -> None:
-    """Initializer for worker processes."""
-    RDLogger.DisableLog("rdApp.*")
-
-
 def safe_embed_molecule(
     mol: Chem.Mol,
     max_retries: int = MAX_ETKDG_RETRIES,
     seed: int = EMBED_RANDOM_SEED,
-) -> Tuple[Optional[Chem.Mol], Optional[str]]:
+) -> Tuple[Chem.Mol | None, str | None]:
     """
     Try ETKDG embedding up to *max_retries* times, fall back to CoordGen.
 
@@ -74,6 +69,7 @@ def safe_embed_molecule(
     warning
         None on ETKDG success, otherwise a human-readable note.
     """
+    # Pick the newest ETKDG params available
     try:
         params = AllChem.ETKDGv3()
     except AttributeError:
@@ -82,32 +78,36 @@ def safe_embed_molecule(
         except AttributeError:
             params = AllChem.ETKDG()
 
+    # Set only attributes guaranteed to exist across versions
     params.randomSeed = seed
+    # DO NOT set params.maxAttempts – not present in some RDKit builds
 
     for _ in range(max_retries):
         mol.RemoveAllConformers()
         if AllChem.EmbedMolecule(mol, params) == 0:
-            return mol, None
+            return mol, None  # ETKDG success
 
+    # Fallback to 2D coords if 3D embedding failed
     try:
-        rdCoordGen.AddCoords(mol)
+        rdCoordGen.AddCoords(mol)  # 2D fallback
         return mol, f"ETKDG failed ({max_retries}x) → used CoordGen"
     except Exception as exc:
         return None, f"ETKDG + CoordGen failed: {exc}"
 
 
-def canonical_smiles(smiles: str) -> str:
-    """Return RDKit-canonical SMILES or raise ValueError."""
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        raise ValueError(f"Invalid SMILES: {smiles}")
-    return Chem.MolToSmiles(mol, canonical=True)
+def has_hypervalent_sulphur(mol: Chem.Mol) -> bool:
+    """Return *True* if the molecule contains S with total valence > 4."""
+    return any(
+        atom.GetSymbol() == "S" and atom.GetTotalValence() > 4
+        for atom in mol.GetAtoms()
+    )
 
 
-def openbabel_fallback(rdkit_mol: Chem.Mol, out_path: str) -> Tuple[bool, Optional[str]]:
+def openbabel_fallback(rdkit_mol: Chem.Mol, out_path: str) -> Tuple[bool, str | None]:
     """
-    Run obabel -d --gen2D on rdkit_mol; write to out_path.
-    Returns (success, error_message).
+    Run *obabel* -d --gen2D on *rdkit_mol*; write to *out_path*.
+
+    Returns *(success, error_message)*.
     """
     with tempfile.NamedTemporaryFile(suffix=".mol", delete=False) as tmp:
         tmp.write(Chem.MolToMolBlock(rdkit_mol, forceV3000=True).encode())
@@ -115,7 +115,12 @@ def openbabel_fallback(rdkit_mol: Chem.Mol, out_path: str) -> Tuple[bool, Option
 
     cmd = ["obabel", tmp_path, "-O", out_path, "-d", "--gen2D"]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         os.remove(tmp_path)
         return True, None
     except subprocess.CalledProcessError as exc:
@@ -123,29 +128,32 @@ def openbabel_fallback(rdkit_mol: Chem.Mol, out_path: str) -> Tuple[bool, Option
         return False, exc.stderr.decode().strip()
 
 
+def canonical_smiles(smiles: str) -> str:
+    """Return RDKit-canonical SMILES or raise *ValueError*."""
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Invalid SMILES: {smiles}")
+    return Chem.MolToSmiles(mol, canonical=True)
+
+
 def print_progress(current: int, total: int) -> None:
     """Draw a coloured, in-place ASCII progress bar."""
-    if total <= 0:
-        return
     filled = int(PROGRESS_BAR_LEN * current / total)
     bar = ANSI_GREEN + "█" * filled + "-" * (PROGRESS_BAR_LEN - filled) + ANSI_RESET
     percent = int(100 * current / total)
     sys.stdout.write(f"\rProgress: |{bar}| {current}/{total} ({percent}%)")
     sys.stdout.flush()
-    if current >= total:
-        print()
+    if current == total:
+        print()  # newline
 
 
 # ──────────────────────────────────────────────────────────────
-# Extra “weird-chemistry” detectors
+# Extra “weird‑chemistry” detectors
 # ──────────────────────────────────────────────────────────────
 EXOTIC_VALENCE_LIMITS = {"S": 4, "P": 4, "As": 4, "Se": 4}
-TRANSITION_METALS = {
-    21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
-    39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-    57, 72, 73, 74, 75, 76, 77, 78, 79
-}
-
+TRANSITION_METALS = {21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+                     39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+                     57, 72, 73, 74, 75, 76, 77, 78, 79}
 
 def needs_openbabel(mol: Chem.Mol) -> bool:
     """
@@ -155,7 +163,9 @@ def needs_openbabel(mol: Chem.Mol) -> bool:
         • any transition metal
         • radicals
         • too many heavy atoms (> 150)
+        • dot-disconnected SMILES fragments
     """
+    # hyper‑valent chalcogens / pnictogens
     if any(
         a.GetSymbol() in EXOTIC_VALENCE_LIMITS
         and a.GetTotalValence() > EXOTIC_VALENCE_LIMITS[a.GetSymbol()]
@@ -163,12 +173,15 @@ def needs_openbabel(mol: Chem.Mol) -> bool:
     ):
         return True
 
+    # transition metals
     if any(a.GetAtomicNum() in TRANSITION_METALS for a in mol.GetAtoms()):
         return True
 
+    # radicals
     if any(a.GetNumRadicalElectrons() for a in mol.GetAtoms()):
         return True
 
+    # very large molecules
     if mol.GetNumHeavyAtoms() > 150:
         return True
 
@@ -179,69 +192,85 @@ def is_dot_smiles(smiles: str) -> bool:
     """True if SMILES contains disconnected fragments (“dot-SMILES”)."""
     return "." in smiles
 
-
 # ──────────────────────────────────────────────────────────────
-# Parallel processing: chunk worker
+# Main routine
 # ──────────────────────────────────────────────────────────────
-@dataclass
-class ChunkResult:
-    processed: int
-    saved: int
-    errors: List[str]
-    warnings: List[str]
-
-
-def process_chunk(args: Tuple[List[Tuple[str, str]], str, bool]) -> ChunkResult:
+def generate_mol_files(csv_path: str, strict_mode: bool = True) -> str:
     """
-    Process a list of (name, raw_smiles) tuples and write MOL files.
-    Returns aggregated logs.
+    Convert SMILES in *csv_path* to flat MOL files.
+
+    Parameters
+    ----------
+    csv_path
+        CSV with columns ``MOLECULE_NAME`` and ``SMILES``.
+    strict_mode
+        If *True*, reject molecules whose 3D coords all sit at (0, 0, 0).
+
+    Returns
+    -------
+    str
+        Output directory path.
     """
-    rows, output_dir, strict_mode = args
+    output_dir = os.path.join(os.getcwd(), "mols")
+    os.makedirs(output_dir, exist_ok=True)
+
     errors: List[str] = []
     warnings: List[str] = []
+
+    data = pd.read_csv(csv_path)
+    data = data.drop_duplicates(subset="MOLECULE_NAME", keep="first")
+
+    total = len(data)
+    last_update = 0
     saved_files = 0
 
-    for name, raw_smiles in rows:
+    print("\nGenerating *.mol files …\n")
+
+    for idx, row in enumerate(data.itertuples(index=False), start=1):
+        name, raw_smiles = row.MOLECULE_NAME, row.SMILES
         try:
             smiles = canonical_smiles(raw_smiles)
             mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
 
+            # ── RDKit embedding ───────────────────────────────────────────
             mol, warn_msg = safe_embed_molecule(mol)
             if mol is None:
                 raise ValueError(warn_msg)
             if warn_msg:
                 warnings.append(f"{name}: {warn_msg}")
 
+            # ---------- Decide if this molecule must go through OpenBabel -------------
             force_babel = False
-            reasons: List[str] = []
+            reason_list: List[str] = []
 
             if needs_openbabel(mol):
                 force_babel = True
-                reasons.append("exotic atom / metal / radical / size")
+                reason_list.append("exotic atom / metal / radical / size")
 
             if is_dot_smiles(smiles):
                 force_babel = True
-                reasons.append("dot-SMILES (disconnected fragments)")
+                reason_list.append("dot-SMILES (disconnected fragments)")
 
-            if warn_msg:
+            if warn_msg:          # ETKDG failed earlier → CoordGen only
                 force_babel = True
-                reasons.append("ETKDG failure")
+                reason_list.append("ETKDG failure")
 
             if force_babel:
-                warnings.append(f"{name}: OpenBabel fallback → {', '.join(reasons)}")
+                warnings.append(f"{name}: OpenBabel fallback → {', '.join(reason_list)}")
 
+            # ── Basic 3D sanity check ───────────────────────────────────
             conf = mol.GetConformer()
-            if strict_mode and all(
-                conf.GetAtomPosition(i).Length() < 0.1 for i in range(mol.GetNumAtoms())
-            ):
+            if all(conf.GetAtomPosition(i).Length() < 0.1 for i in range(mol.GetNumAtoms())):
                 raise ValueError("All atoms at origin (invalid 3D)")
 
+            # ── Flatten copy to 2D; strip wedge bonds ───────────────────
             mol2d = Chem.Mol(mol)
             AllChem.Compute2DCoords(mol2d)
             Chem.RemoveStereochemistry(mol2d)
 
             out_path = os.path.join(output_dir, f"{name}.mol")
 
+            # ── Write via RDKit or OpenBabel ─────────────────────────────
             if not force_babel:
                 with open(out_path, "w", encoding="utf-8") as handle:
                     handle.write(Chem.MolToMolBlock(mol2d, forceV3000=True))
@@ -257,97 +286,28 @@ def process_chunk(args: Tuple[List[Tuple[str, str]], str, bool]) -> ChunkResult:
                 f"Molecule: {name}\nSMILES: {raw_smiles}\nError: {exc}\n"
             )
 
-    return ChunkResult(processed=len(rows), saved=saved_files, errors=errors, warnings=warnings)
+        # ── Progress bar update ─────────────────────────────────────────
+        progress = (idx / total) * 100
+        if idx != total and progress - last_update >= 1:
+            print_progress(idx, total)
+            last_update = progress
 
-
-def split_into_n_chunks(items: List[Tuple[str, str]], n: int) -> List[List[Tuple[str, str]]]:
-    """Split items into n chunks as evenly as possible."""
-    if n <= 1:
-        return [items]
-    k, m = divmod(len(items), n)
-    chunks: List[List[Tuple[str, str]]] = []
-    start = 0
-    for i in range(n):
-        size = k + (1 if i < m else 0)
-        chunks.append(items[start:start + size])
-        start += size
-    return [c for c in chunks if c]  # drop empty chunks
-
-
-# ──────────────────────────────────────────────────────────────
-# Main routine
-# ──────────────────────────────────────────────────────────────
-def generate_mol_files(csv_path: str, strict_mode: bool = True) -> str:
-    """
-    Convert SMILES in csv_path to flat MOL files (parallel, CPU-chunked).
-
-    Parameters
-    ----------
-    csv_path
-        CSV with columns MOLECULE_NAME and SMILES.
-    strict_mode
-        If True, reject molecules whose coords all sit near (0, 0, 0).
-
-    Returns
-    -------
-    str
-        Output directory path.
-    """
-    output_dir = os.path.join(os.getcwd(), "mols")
-    os.makedirs(output_dir, exist_ok=True)
-
-    data = pd.read_csv(csv_path)
-    data = data.drop_duplicates(subset="MOLECULE_NAME", keep="first")
-
-    rows: List[Tuple[str, str]] = [(r.MOLECULE_NAME, r.SMILES) for r in data.itertuples(index=False)]
-    total = len(rows)
-
-    if total == 0:
-        print(f"{ANSI_ORANGE}No rows found in CSV. Nothing to do.{ANSI_RESET}")
-        return output_dir
-
-    cpu_count = os.cpu_count() or 1
-    n_workers = min(cpu_count, total)
-
-    chunk_factor = 4
-    n_chunks = min(total, n_workers * chunk_factor)
-    chunks = split_into_n_chunks(rows, n_chunks)
-
-    print("\nGenerating *.mol files …\n")
-    print(f"Detected CPUs: {cpu_count} → using workers: {n_workers} (chunks: {len(chunks)})\n")
-
-    print_progress(0, total)
-
-    all_errors: List[str] = []
-    all_warnings: List[str] = []
-    saved_files = 0
-    done = 0
-
-    # Prepare args for each worker: (chunk_rows, output_dir, strict_mode)
-    worker_args = [(chunk, output_dir, strict_mode) for chunk in chunks]
-
-    with Pool(processes=n_workers, initializer=_worker_init) as pool:
-        for result in pool.imap_unordered(process_chunk, worker_args):
-            done += result.processed
-            saved_files += result.saved
-            all_errors.extend(result.errors)
-            all_warnings.extend(result.warnings)
-            print_progress(done, total)
+    print_progress(total, total)
 
     # ── Write logs ─────────────────────────────────────────────────────
-    if all_errors:
+    if errors:
         with open("mol_creation_error.log", "w", encoding="utf-8") as fh_err:
-            fh_err.write("==== MOL CREATION ERRORS ====\n\n" + "\n".join(all_errors))
-    if all_warnings:
+            fh_err.write("==== MOL CREATION ERRORS ====\n\n" + "\n".join(errors))
+    if warnings:
         with open("mol_creation_warning.log", "w", encoding="utf-8") as fh_warn:
-            fh_warn.write("==== MOL CREATION WARNINGS ====\n\n" + "\n".join(all_warnings))
+            fh_warn.write("==== MOL CREATION WARNINGS ====\n\n" + "\n".join(warnings))
 
     # ── Summary to console ─────────────────────────────────────────────
     print(f"\n{ANSI_GREEN}Generated {saved_files} MOL files in '{output_dir}'.{ANSI_RESET}")
-    print(f"{ANSI_GREEN}Failed to generate {len(all_errors)} MOL files.{ANSI_RESET}")
-    if all_errors:
+    print(f"{ANSI_GREEN}Failed to generate {len(errors)} MOL files.{ANSI_RESET}")
+    if errors:
         print(f"{ANSI_RED}See 'mol_creation_error.log' for details.{ANSI_RESET}")
-    if all_warnings:
+    if warnings:
         print(f"{ANSI_ORANGE}See 'mol_creation_warning.log' for fallbacks.{ANSI_RESET}")
 
     return output_dir
