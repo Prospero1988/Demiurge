@@ -1,0 +1,5 @@
+MOLECULE_NAME,SMILES,VALUE
+ethanol,CCO,1.0
+benzene,c1ccccc1,2.0
+alanine,N[C@@H](C)C(=O)O,3.0
+tetramethylammonium,C[N+](C)(C)C,4.0

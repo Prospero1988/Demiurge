@@ -1,310 +1,201 @@
-# DEMIURGE
+# Demiurge
 
-<p align="center"><IMG SRC="IMG/logo.png", width="400px" /></p>
+Demiurge generates labeled molecular feature matrices for QSPR work. The production NMR path now implements the same validated `SPECTRAPRINTS_NMR_V2` representation as `screen_SPECTRAprints`; the former Demiurge ETKDG/CoordGen/OpenBabel representation is intentionally not preserved as a scientific parity target.
 
-## NMR or ECFP4-based QSPR Machine Learning Input Generator
+The project supports two first-class execution modes over one scientific core:
 
-Demiurge is a modular and fully automated Python-based platform designed to generate machine learning input data from both simulated spectral and structural molecular representations. Specifically developed to support QSPR studies, it processes chemical structures provided as SMILES strings alongside target properties (e.g., CHI logD), and produces ready-to-use feature matrices for classical ML models and deep neural networks.
+- local mode for hundreds to thousands of molecules on a normal Ubuntu workstation;
+- SLURM mode for sharded, unattended cluster campaigns with staging, bounded retry and durable progress.
 
-The tool supports four representation modes: predicted **¹H NMR** spectra, **¹³C NMR** spectra, concatenated **¹H | ¹³C** spectral vectors and **ECFP4** molecular fingerprints. Input files in `.csv` format are validated for SMILES integrity and formatting. Molecular structures are reconstructed using **RDKit** or **obabel**, optimized in 3D, then flattened to 2D to comply with NMR prediction tools.
+Neither backend changes the representation. Scheduler, paths, scratch location, batch size, process count, Java thread count, heap and JVM lifecycle are operational settings and are excluded from scientific identity.
 
-NMR spectral predictions are performed locally using a standalone Java-based engine built on the **NMRshiftDB2** database, utilizing **HOSE-code** pattern matching. The resulting chemical shift lists are then transformed into fixed-length spectral vectors through a custom bucketing strategy (200 bins per nucleus, but can be changed in bucketing module script), enabling compatibility with ML pipelines. In the fused representation, the 1H and 13C vectors are joined together head to tail.
+## Scientific contracts
 
-For ECFP4 generation, **RDKit's Morgan fingerprinting** (radius = 2) is used to construct 2048-bit binary descriptors. All generated feature matrices are merged with property labels (e.g., CHI logD), headers are appended, and the final datasets are saved as `.csv` files.
+The NMR V2 path is frozen as:
 
-Demiurge is optimized for parallel execution on 8-core CPUs, achieving processing times of ~6 minutes for ¹H NMR spectra, ~15 minutes for ¹³C NMR, and under 2 minutes for ECFP4 on datasets of ~1000 molecules.
+```text
+raw SMILES
+  -> RDKit canonical isomeric SMILES
+  -> explicit hydrogens
+  -> Compute2DCoords
+  -> RemoveStereochemistry
+  -> V3000 MOL bytes
+  -> Java/CDK ModelBuilder3D rebuild
+  -> 3D-first NMRshiftDB2 1H and 13C prediction
+  -> unnormalised count buckets
+```
 
-The architecture is fully extensible and easily adaptable to other endpoints such as **logP**, **TPSA**, or **logS**, and to other types of spectral or molecular representations.
+The active path does not call ETKDG, CoordGen or OpenBabel. Java reports whether each prediction used native 3D, rebuilt 3D or the 2D branch. Prediction JARs are SHA-256 pinned and checked before NMR work:
 
-The tool uses the NMRshiftDB2 predictor, which can be accessed [here](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/).
+| Artifact | SHA-256 |
+|---|---|
+| `cdk-2.9.jar` | `60710218b8f9fd206e6151122e630c281462e9588e4b7a279c49c1532a8aeffe` |
+| `cdk-builder3d-2.9.jar` | `2c3add480bc7363b5fe6da076f873543b47355630149927b9420126af78542ca` |
+| `predictorc.jar` | `e3c3365fb3ffdccd79bb1c39c457c2486e6170f88eeaca5f36c09587950a5090` |
+| `predictorh.jar` | `529e2c89279aaafcf63347460775693d0ff5120d17dae051e31b9e55f6d1e67d` |
 
----
+Feature contracts and exact orders are:
 
-### 📖 Associated Research & Citation
+| Mode | Contract ID | Exact feature order | Dimension |
+|---|---|---|---:|
+| `1H` | `DEMIURGE_1H_NMR_V2` | 1H buckets, `[-1, 17]`, inclusive maximum | 200 |
+| `13C` | `DEMIURGE_13C_NMR_V2` | 13C buckets, `[-10, 230]`, inclusive maximum | 200 |
+| `hybrid` | `DEMIURGE_HYBRID_NMR_V2_H_C` | 1H then 13C | 400 |
+| `FP` | `DEMIURGE_ECFP4` | Morgan/ECFP4, radius 2, no chirality | 2048 |
+| `total` | `DEMIURGE_TOTAL_NMR_V2_H_C_ECFP4` | 1H then 13C then ECFP4 | 2448 |
 
-**For more detailed information, check the original Open Access research paper:**
+The migration is intentionally incompatible with models trained on the legacy Demiurge NMR representation. Such models must not consume NMR V2 features without retraining and an explicit deployment contract update. The ECFP4 component retains Demiurge's established 2048-bit contract.
 
-Leniak, A.; Pietruś, W.; Kurczab, R. From NMR to AI: Fusing 1H and 13C Representations 
-for Enhanced QSPR Modeling. J Chem Inf Model 2025. 
-[https://doi.org/10.1021/acs.jcim.5c01791](https://doi.org/10.1021/acs.jcim.5c01791).
+## Architecture
 
-**If you use this software in your research, please cite our publication.**
+```text
+demiurge.py (local CLI) -------------------+
+                                             -> demiurge_bin/pipeline.py
+demiurge_supervisor.py -> SLURM worker -----+      | preparation.py
+                                                    | predictor.py -> persistent Java JVMs
+                                                    | bucketing.py
+                                                    | atomic batch commits/run_state.py
+```
 
----
+`demiurge_bin/pipeline.py` is the only production feature pipeline. SLURM adds shard discovery, arrays, staging and resource policy; it does not contain molecule preparation, NMR, bucketing or fingerprint code.
 
-## 🖥 Examples of Working Program
+Important files:
 
-The script was run as an example for the prediction of 13C NMR spectra with an input file containing a misdefined one of the rows. In addition, a comma was inserted as the decimal separator and a semicolon was inserted as the column separator.
+- `demiurge.py`: `run`, `resume` and read-only `status` for one input;
+- `demiurge_bin/`: shared preparation, Java launcher, bucketing, composition and durable state;
+- `demiurge_supervisor.py`: campaign manifest, array submission/resume and campaign status;
+- `orchestration/slurm_worker.sh`: Bash worker using the same `demiurge.py` entry point;
+- `orchestration/staging.py`: hash-verified, marker-owned input/scratch staging;
+- `demiurge_nmr_v2_gate.py`: exact cross-repository and backend/lifecycle comparison;
+- `demiurge_performance_gate.py`: QC-gated performance aggregation;
+- `validation/`: frozen parity corpus and provenance;
+- `demiurge_bin/legacy_gen_mols_etkdg.py` and `demiurge-old.py`: historical reference only.
 
-<p align="center"><IMG SRC="IMG/demiurge_13c.png" /></p>
-<p align="center"><IMG SRC="IMG/demiurge_13c2.png" /></p>
+## Environment
 
-## 📑 Table of Contents
-1. [DEMIURGE](#demiurge)
-2. [NMR or ECFP4-based Machine Learning Input Generator](#nmr-or-ecfp4-based-machine-learning-input-generator)
-3. [🖥 Examples of Working Program](#-examples-of-working-program)
-4. [💡 Key Features](#-key-features)
-5. [✅ Requirements](#-requirements)
-6. [⚙️ Installation](#️-installation)
-7. [🗂 Directory Structure](#-directory-structure)
-8. [🚀 Usage](#-usage)
-9. [📄 Command Line Arguments](#-command-line-arguments)
-10. [📄 Example Usage](#-example-usage)
-11. [📄 Input CSV Format](#-input-csv-format)
-12. [⚙️ Script Workflow for NMR-based Output Data (1H / 13C)](#️-script-workflow-for-nmr-based-output-data-1h--13c)
-13. [⚙️ Script Workflow for ECFP4-based Output Data (FP)](#️-script-workflow-for-ecfp4-based-output-data-fp)
-14. [🛠 Troubleshooting](#-troubleshooting)
-15. [📜 License](#-license)
-
-## 💡Key Features
-
-- **Molecule Generation**: Converts SMILES codes into 3D molecular structures and saves them as flattened 2D `.mol` files using RDKit.
-- **NMR Spectrum Prediction**: Predicts NMR spectra for each molecule using a custom Java-based [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) predictor.
-- **ECFP4 Fingerprints Generation**: Generates feature space using ECPF4 fingerprints with radius 2. (activated via --predictor FP)
-- **Bucketization**: Converts predicted NMR spectra into a uniform matrix using a bucketing technique.
-- **Data Merging**: Merges the bucketized spectra/fingerprints with property labels to form a consolidated dataset.
-- **Label Insertion**: Adds a target property column to the merged dataset based on a specified label column.
-- **Custom Headers**: Adds headers to the final dataset for easy identification and readability.
-- **Data Concatenation**: 1H and 13C Representations are fused into new hybrid representation.
-- **Optional Cleanup**: Deletes all intermediate files and folders to save space and reduce clutter.
-
-## ✅ Requirements
-
-**Important**: The script was tested under **Windows 10** using **PowerShell** and works reliably in this environment on **Python 3.11.4**. It has **not** been tested on Linux or other operating systems.
-
-Ensure the following software and libraries are installed:
-
-1. **Python Libraries**:
-   - `rdkit`
-   - `pandas`
-   - `numpy`
-   - `art`
-   - `tqdm`
-
-   Install the required Python packages using:
-
-   ```bash
-   pip install rdkit pandas numpy tqdm art
-   ```
-   or predefined Python script, which will check if the necessary libraries are installed. If not it will install them:
-
-   ```bash
-   python install_modules.py
-   ```
-2. **Open Babel**
-   Open Babel is needed to process "exotic" structures that standard RDKit library can not process. Make sure the `obabel` command is available in your system's PATH.
-
-3. **Java SDK**:
-   - Java Development Kit (JDK) is required to compile and run the Java batch processor for NMR spectrum prediction. Make sure the `javac` and `java` commands are available in your system's PATH.
-
-### ✅ Conda Environment
-
-If you prefer to use Conda - utilize the provided environment file to create your Conda environment:
+Create the Python environment and make a JDK available:
 
 ```bash
 conda env create -f conda_environment.yml
-conda activate predictor_logD
+conda activate demiurge
+python install_modules.py
 ```
 
-Then Download & Install Java SDK (tested on version 23). Ensure java and javac are accessible in your PATH. 
+The active runtime needs Python 3.12, NumPy, pandas, RDKit and a JDK providing `java` and `javac`. OpenBabel is deliberately absent. Java compilation is hash-aware and stored outside the checkout (`DEMIURGE_JAVA_BUILD_DIR` may override the system temporary cache).
 
-## ⚙️ Installation
+Input is a CSV containing `MOLECULE_NAME`, `SMILES` and the label column. `--label-column` is one-based and defaults to 3. Invalid molecules are retained as explicit failure metadata; only successful rows enter the final feature CSV.
 
-Clone the repository from GitHub and navigate to the project directory:
+## Local Ubuntu workflow
+
+Run a small `total` job:
 
 ```bash
-git clone https://github.com/Prospero1988/Demiurge.git
-cd Demiurge
+python demiurge.py run \
+  --input dataset.csv \
+  --mode total \
+  --output-root ./results/run_001 \
+  --temp-root /tmp/demiurge_run_001 \
+  --prep-workers 4 \
+  --java-threads 2 \
+  --java-heap 4G \
+  --batch-size 500 \
+  --java-lifecycle persistent
 ```
 
-### 🗂 Directory Structure
-
-The project is organized into the following directories and files:
-
-```
-demiurge/
-│
-├── demiurge.py                    # Main script for executing the pipeline
-├── input_example.csv              # Example of the input file
-├── install_modules.py             # Installs required Python packages
-├── predictor/
-│   ├── predictorh.jar             # Java-based predictor for 1H spectra [NMRshiftDB2]
-│   ├── predictor13C.jar           # Java-based predictor for 13C spectra [NMRshiftDB2]
-│   ├── cdk-2.9.jar                # CDK library required for spectrum prediction.
-│   ├── BatchProcessor1H.java      # Java batch processor for 1H spectra [NMRshiftDB2]
-│   └── BatchProcessor13C.java     # Java batch processor for 13C spectra [NMRshiftDB2]
-├── logD_predictor_bin/            # Directory containing helper modules
-│   ├── csv_checker.py             # Verifies and preprocesses CSV files
-│   ├── concatenator.py            # Concatenate 1H and 13C matrices into new fused matrix
-│   ├── gen_mols.py                # Generates .mol files from SMILES strings
-│   ├── bucket.py                  # Buckets NMR spectra
-│   ├── merger.py                  # Merges bucketed spectra CSVs
-|   ├── labeler.py                 # Adds labels to the merged spectra file.
-│   ├── custom_header.py           # Adds custom headers to the final dataset
-│   ├── fp_generator.py            # ECFP4 Fingerprints generator
-│   └── model_query.py             # Queries machine learning models
-└── README.md                      # Project documentation (this file)
-```
-
-## 🚀 Usage
-
-To run the script, use the following command:
+Resume a compatible interrupted/failed run and inspect durable progress:
 
 ```bash
-python demiurge.py --csv_path <input_csv_file> --predictor <NMR_type> --label_column <column_number> [--clean]
+python demiurge.py resume --output-root ./results/run_001 --temp-root /tmp/demiurge_run_001
+python demiurge.py status --output-root ./results/run_001
 ```
 
-If using conda remember to activate enviriment:
+`per-batch` remains an explicit A/B/debug fallback through `--java-lifecycle per-batch`. Persistent is the production default.
+
+## DGX/SLURM workflow
+
+`orchestration/config.toml` contains operational defaults only. The supplied production profile is persistent JVM, Java threads 2, Java heap 4G, preparation workers 4, batch 1000, 6 CPUs and 16G per task, with at most three attempts. Adapt partition, time, environment and paths for the deployment.
 
 ```bash
-conda activate predictor_logD
+python demiurge_supervisor.py submit \
+  --project-root /raid/homes/$USER/Demiurge \
+  --input-dir /raid/data/demiurge_shards \
+  --pattern '*.csv' \
+  --output-root /raid/results/demiurge \
+  --scratch-root /nvme/scratch/$USER/demiurge \
+  --campaign production_001
+
+python demiurge_supervisor.py status \
+  --manifest /raid/results/demiurge/production_001/campaign_manifest.json
+
+python demiurge_supervisor.py resume \
+  --manifest /raid/results/demiurge/production_001/campaign_manifest.json
 ```
 
-### 📄 Command Line Arguments
+Submission creates the stdout/stderr directory before `sbatch`. The worker is a real Bash script with `set -Eeuo pipefail`; no `--wrap`, Git checkout, NAS mount or implicit working directory is required. Inputs may be staged into a per-job scratch directory and verified by content hash. Scientific temporary MOL/raw spectra live in owned scratch; persistent batches, checkpoints, summaries, failures, diagnostics and logs remain under the output campaign. Cleanup can remove only a marker-owned child of the declared scratch root.
 
-| Argument           | Required | Accepted Values                        | Description                                                                                                   |
-|--------------------|----------|----------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| `--csv_path`       | ✅ Yes   | *(any valid CSV path)*                | Path to the input CSV file containing compound names and SMILES codes.                                       |
-| `--predictor`      | ✅ Yes   | `1H`, `13C`, `hybrid`, `FP`            | Type of predictor: `1H` or `13C` for NMR, `hybrid` for fused 1H/13C, or `FP` for ECFP4 fingerprints.         |
-| `--label_column`   | ✅ Yes   | *(integer ≥ 1)*                        | Column index (1-based) in the input CSV file that contains the target property values.                       |
-| `--clean`          | ❌ No    | *(flag, no value)*                    | If set, the script will delete all intermediate temporary files and folders after execution.                 |
+Three `afterany` arrays implement finite attempts. Completed/permanent tasks skip later arrays; classified transient failures may retry; unknown errors remain fail-closed. Resume refuses incompatible input content or scientific configuration and refuses while a recorded array is active. Historical job IDs absent from `squeue` are inactive; unexpected scheduler errors block resume.
 
+## Durable outputs and recovery
 
-### 📄 Example Usage
+Each run writes:
+
+- `run_manifest.json`: frozen input/scientific identity and initial operational configuration;
+- `checkpoint.json`: atomic state, next row, committed batches, success/failure counts and heartbeat;
+- `batches/batch_*/`: atomic feature and metadata commits, optionally raw scientific artifacts;
+- `generated_ML_inputs/*_ML_input.csv`: assembled final matrix;
+- `failures.jsonl`: molecule-level identity, stage, type and message;
+- `summary.json`: final counts, hashes, timings, throughput and observability;
+- `production_progress.txt`: read-only-derived progress snapshot;
+- `diagnostics/`: Java and process diagnostics.
+
+Batch directories become visible only after their feature, metadata and commit files are complete. Resume begins at the next durable row; scratch paths and execution backend are not resume identity. A status command reads manifests/checkpoints rather than parsing stdout.
+
+## Scientific validation
+
+The mandatory Phase 0 reference is `screen_SPECTRAprints` commit `5c8537eeb8486b3287f0fe67c451f82f1a1a0dda` and the frozen 12-molecule corpus whose SHA-256 is `fe5803b2da1356e364224e90c0cb0fc543165e4b130b38d59a4b040528b29d3e`.
+
+The gate is zero-tolerance and fail-closed. It compares canonical identities, preparation success/failure, exact V3000 MOL bytes, indexed raw 1H/13C CSV bytes, per-molecule native-3D/rebuilt-3D/2D status, both 200-bin vectors and H|C. Full-run comparison additionally requires identical final rows, ECFP4/total composition, failures, canonical metadata and retained scientific artifacts.
 
 ```bash
-python demiurge.py --csv_path 'test.csv' --predictor '1H' --label_column 3 --clean
+python demiurge_nmr_v2_gate.py emit --implementation screen \
+  --screen-root /path/to/screen_SPECTRAprints \
+  --corpus validation/nmr_v2_parity_corpus.jsonl \
+  --output-root validation/results/screen
+python demiurge_nmr_v2_gate.py emit --implementation demiurge \
+  --corpus validation/nmr_v2_parity_corpus.jsonl \
+  --output-root validation/results/demiurge
+python demiurge_nmr_v2_gate.py compare \
+  --screen-output validation/results/screen \
+  --demiurge-output validation/results/demiurge
 ```
 
-In this example:
-- The script will read the input CSV file `test.csv`.
-- It will generate `.mol` files for each molecule based on its SMILES code.
-- It will predict the 1H NMR spectra for each molecule.
-- The spectra will be bucketized and merged into a single file.
-- The target property values from `column 3` in `test.csv` will be added as labels.
-- All intermediate files and directories will be deleted after execution due to the `--clean` option.
+Backend and lifecycle equivalence is tested with `compare-runs` after retaining scientific artifacts. A production recommendation is permitted only for an exact/QC-clean run.
 
-```bash
-python demiurge.py --csv_path 'test.csv' --predictor 'hybrid' --label_column 3 --clean
-```
+## Migration and optimization history
 
-In this example:
-- The script will read the input CSV file `test.csv`.
-- It will generate `.mol` files for each molecule based on its SMILES code.
-- It will predict the 1H NMR spectra for each molecule.
-- The spectra will be bucketized and merged into a single file.
-- The target property values from `column 3` in `test.csv` will be added as labels.
-- Script predicts 13C, buckets, merges and adds propety colums as for 1H data.
-- 1H and 13C matrices are fused into concatenated representation 1H|13C.
-- All intermediate files and directories will be deleted after execution due to the `--clean` option.
+| Phase/candidate | Change | Validation | Status |
+|---|---|---|---|
+| Legacy Demiurge | ETKDG retries, CoordGen/OpenBabel fallbacks and per-batch predictor | Historical behavior; not an NMR V2 parity target | ARCHIVED |
+| Phase 0 | Frozen corpus, reference provenance and exact cross-repository gate | Local official-corpus comparison against validated screen implementation: exact PASS | ACCEPTED |
+| Phase 1 | Exact NMR V2 RDKit preparation and 200+200 buckets | Canonical SMILES and V3000 MOL byte parity; bucket boundary tests | ACCEPTED |
+| Phase 2 | Thread-confined `PredictionTool` and per-molecule `usedHoseCodes` reset | Exact per-batch/persistent, repeated and multi-thread raw spectra | ACCEPTED |
+| Phase 3 | Persistent 1H/13C JVM services with safe argv launcher and diagnostics | Exact Java integration and full-run lifecycle comparison | ACCEPTED |
+| Phase 4 | Persistent preparation pool, batches, atomic commits, retry/resume | Failure/recovery and backend-equivalence tests | ACCEPTED |
+| Phase 5 | Manifest-driven SLURM arrays, staging, status and bounded retries | Local orchestration tests and Bash validation; real DGX execution pending | ACCEPTED LOCALLY |
+| Phase 6 | Production defaults, dependency cleanup and documentation | OpenBabel removed; hash-pinned artifacts and full local suite | ACCEPTED LOCALLY |
 
-```bash
-python demiurge.py --csv_path 'test.csv' --predictor 'FP' --label_column 3 --clean
-```
+The corrected migration rejected two ideas: preserving legacy spectra as the parity target, and maintaining ETKDG/OpenBabel as a production/fallback mode. The known legacy 1H differences are expected evidence of the deliberate representation change, not a regression. No scientific optimization that failed NMR V2 parity was adopted.
 
-In this example:
-- The script will read the input CSV file `test.csv`.
-- It will generate `.mol` files for each molecule based on its SMILES code.
-- It will calculate ECFP4 fingerprints for each molecule using RDKit.
-- The fingerprint matrix will be merged with the target property values from `column 3` in `test.csv`.
-- All intermediate files and directories will be deleted after execution due to the `--clean` option.
+The validated screen pipeline supplied the persistent/thread-local design evidence, but its screening throughput is not reported here as Demiurge performance. A four-molecule Windows integration smoke (two batches, 2 Java threads, 2 preparation workers) measured 8.728 s for per-batch JVM versus 6.114 s for persistent JVM, a 1.427x smoke-only speedup; all final rows and retained scientific artifacts were exact. This workload is too small for a production recommendation. The old README quoted approximately 6 minutes for 1H and 15 minutes for 13C per roughly 1000 molecules on an 8-core workstation; that was legacy code, hardware-unspecified and not a valid NMR V2 baseline. A production-like Demiurge DGX benchmark remains required before publishing representative before/after speedup.
 
-### 📄 Input CSV Format
+## Current status
 
-The input CSV file should have at least the following columns:
-- `MOLECULE_NAME`: The name or identifier of the molecule.
-- `SMILES`: The SMILES code of the molecule.
-- `<Label>`: The property values to be modeled (must be specified in the `--label_column` parameter).
+- **READY locally:** scientific core, local CLI, checkpoint/resume, diagnostics and exact cross-repository parity.
+- **READY for controlled DGX validation:** SLURM backend, staging, retry/status and validation SBATCH are implemented without executing a cluster job from this repository task.
+- **PENDING before production-scale use:** run the supplied DGX parity/lifecycle gate on a representative labeled dataset, review QC/failures and record measured resource/performance results.
 
-Example `test.csv`:
+## Citation and license
 
-| MOLECULE_NAME | SMILES          | Label |
-|---------------|-----------------|-------|
-| Compound1     | CCCO            | 5.3   |
-| Compound2     | CCC(=O)O        | 2.1   |
-| Compound3     | CCN(CC)CC       | 7.8   |
+Leniak, A.; Pietruś, W.; Kurczab, R. *From NMR to AI: Fusing 1H and 13C Representations for Enhanced QSPR Modeling.* J. Chem. Inf. Model. 2025. [https://doi.org/10.1021/acs.jcim.5c01791](https://doi.org/10.1021/acs.jcim.5c01791).
 
-### ⚙️ Script Workflow for NMR-based Output Data (1H / 13C)
-
-1. **Step 1: Generate `.mol` Files**:
-   - Reads SMILES codes from the input CSV file and generates corresponding `.mol` files using RDKit.
-
-2. **Step 2: Predict NMR Spectra**:
-   - Uses the Java-based `BatchProcessor1H` or `BatchProcessor13C` to predict NMR spectra for each molecule. Predictor is part of [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) database.
-
-3. **Step 3: Bucketize Spectra**:
-   - Converts the predicted spectra into a uniform bucketized matrix for easy analysis and machine learning input generation.
-
-4. **Step 4: Merge Spectra and Labels**:
-   - Merges the bucketized spectra with the specified label column from the input CSV file.
-
-5. **Step 5: Add Custom Headers**:
-   - Adds descriptive headers to the final merged CSV file, making it easier to interpret and use for machine learning tasks.
-
-6. **Step 6: Cleanup (Optional)**:
-   - Deletes all intermediate files and directories if the `--clean` option is specified.
-     
-
-### ⚙️ Script Workflow for NMR-based Concatenated Output Data (1H|13C)
-
-1. **Step 1: Generate `.mol` Files**:
-   - Reads SMILES codes from the input CSV file and generates corresponding `.mol` files using RDKit.
-
-2. **Step 2: Predict NMR Spectra**:
-   - Uses the Java-based `BatchProcessor1H` or `BatchProcessor13C` to predict NMR spectra for each molecule. Predictor is part of [NMRshiftDB2](https://sourceforge.net/p/nmrshiftdb2/wiki/PredictorJars/) database.
-
-3. **Step 3: Bucketize Spectra**:
-   - Converts the predicted spectra into a uniform bucketized matrix for easy analysis and machine learning input generation.
-
-4. **Step 4: Merge Spectra and Labels**:
-   - Merges the bucketized spectra with the specified label column from the input CSV file.
-
-5. **Step 5: Add Custom Headers**:
-   - Adds descriptive headers to the final merged CSV file, making it easier to interpret and use for machine learning tasks.
-   - 
-6. **Step 5: Concatenation od 1H adn 13C**:
-   - The script connects 1H and 13C vectors head-to-tail. It combines representations for the same MOLECULE_NAME and for the same label value.
-
-8. **Step 7: Cleanup (Optional)**:
-   - Deletes all intermediate files and directories if the `--clean` option is specified.
-
-
-
-### ⚙️ Script Workflow for ECFP4-based Output Data (FP)
-
-1. **Step 1: Generate `.mol` Files**  
-   - Reads SMILES strings from the input CSV file and converts them into 2D `.mol` files using RDKit.
-
-2. **Step 2: Calculate ECFP4 Fingerprints**  
-   - For each molecule, extended-connectivity fingerprints (ECFP4) are generated from the `.mol` structures using the RDKit implementation.
-
-3. **Step 3: Merge Fingerprints and Labels**  
-   - Merges the computed ECFP4 vectors with the label column (e.g., logD values) from the input CSV file into a unified DataFrame.
-
-4. **Step 4: Add Custom Headers**  
-   - Assigns descriptive headers to the final CSV file, improving interpretability and downstream machine learning usability.
-
-5. **Step 5: Cleanup (Optional)**  
-   - Deletes all intermediate files and directories if the `--clean` flag is used.
-
-
-## 🛠 Troubleshooting
-
-1. **Java Compilation Issues**:
-   - Ensure that the `javac` and `java` commands are available and the Java SDK is installed.
-   - If `javac` is not recognized, check the system's `PATH` variable and make sure it includes the path to the JDK `bin` directory.
-
-2. **Missing Dependencies**:
-   - Ensure that all required Python libraries (`rdkit`, `pandas`, and `numpy`) are installed.
-
-3. **File Not Found Errors**:
-   - Verify the paths to input files and directories. Ensure that the input CSV file and other necessary files are correctly specified.
-
-4. **Memory or Performance Issues**:
-   - If handling a large dataset, consider increasing the memory allocation for the Java runtime by adjusting the `-Xmx` parameter in the script.
-
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
+The project is distributed under the MIT License. NMR prediction uses the NMRshiftDB2 predictor artifacts; verify their applicable terms for deployment.

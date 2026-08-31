@@ -1,0 +1,20 @@
+[worker]
+mode = "total"
+label_column = 3
+batch_size = 1000
+prep_workers = 4
+java_threads = 2
+java_heap = "4G"
+java_lifecycle = "persistent"
+max_attempts = 3
+
+[slurm]
+partition = "dgx_long"
+time = "24:00:00"
+cpus_per_task = 6
+memory = "16G"
+max_concurrent_jobs = 4
+job_name_prefix = "DEMIURGE_NMR_V2"
+conda_root = "/raid/soft/miniconda"
+conda_env = "demiurge"
+staging_enabled = true

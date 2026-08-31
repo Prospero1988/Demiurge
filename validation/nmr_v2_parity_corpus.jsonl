@@ -1,0 +1,12 @@
+{"molecule_id":"ordinary_ethanol","smiles":"CCO","categories":["ordinary"]}
+{"molecule_id":"aromatic_benzene","smiles":"c1ccccc1","categories":["aromatic"]}
+{"molecule_id":"heterocycle_imidazole","smiles":"c1ncc[nH]1","categories":["aromatic","heterocycle"]}
+{"molecule_id":"flexible_octanol","smiles":"CCCCCCCCO","categories":["flexible"]}
+{"molecule_id":"fused_naphthalene","smiles":"c1ccc2ccccc2c1","categories":["aromatic","fused_polycyclic","historical_etkdg_risk_class"]}
+{"molecule_id":"multiple_rings_bicyclohexyl","smiles":"C1CCCCC1C2CCCCC2","categories":["multiple_rings","flexible"]}
+{"molecule_id":"tetrahedral_l_alanine","smiles":"N[C@@H](C)C(=O)O","categories":["tetrahedral_stereo"]}
+{"molecule_id":"ez_trans_difluoroethene","smiles":"F/C=C/F","categories":["defined_ez_stereo"]}
+{"molecule_id":"ez_cis_difluoroethene","smiles":"F/C=C\\F","categories":["defined_ez_stereo"]}
+{"molecule_id":"charged_tetramethylammonium","smiles":"C[N+](C)(C)C","categories":["charged"]}
+{"molecule_id":"zwitterion_glycine","smiles":"[NH3+]CC(=O)[O-]","categories":["charged","zwitterion"]}
+{"molecule_id":"constrained_adamantane","smiles":"C1C2CC3CC1CC(C2)C3","categories":["fused_polycyclic","multiple_rings","constrained","java_rebuild_stress"]}

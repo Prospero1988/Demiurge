@@ -1,38 +1,30 @@
-import os
+#!/usr/bin/env python3
+"""Fail-closed dependency preflight for the production Demiurge runtime."""
+
+from __future__ import annotations
+
+import importlib.util
 import shutil
-import re
-import subprocess
 import sys
 
-# List of modules to check and install if necessary
-modules = [
-    ('tqdm', 'tqdm'),
-    ('pandas', 'pandas'),
-    ('art', 'art'),
-    ('numpy', 'numpy'),
-    ('rdkit', 'rdkit')
-]
 
-# Function to check and install a module
-def check_and_install(module_name, package_name=None):
-    try:
-        __import__(module_name)
-        print(f"Module {module_name} is already installed.")
-    except ImportError:
-        if package_name is None:
-            package_name = module_name
-        print(f"Installing module {module_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
-        print(f"Module {module_name} has been installed.")
+REQUIRED_MODULES = ("numpy", "pandas", "rdkit")
+REQUIRED_EXECUTABLES = ("java", "javac")
 
-# Check and install required modules
-for module_name, package_name in modules:
-    check_and_install(module_name, package_name)
 
-# Importing verified modules
-from tqdm import tqdm
-import zipfile
-import rarfile
+def main() -> int:
+    missing_modules = [name for name in REQUIRED_MODULES if importlib.util.find_spec(name) is None]
+    missing_commands = [name for name in REQUIRED_EXECUTABLES if shutil.which(name) is None]
+    if missing_modules or missing_commands:
+        if missing_modules:
+            print("Missing Python modules: " + ", ".join(missing_modules), file=sys.stderr)
+        if missing_commands:
+            print("Missing commands: " + ", ".join(missing_commands), file=sys.stderr)
+        print("Create conda_environment.yml and install a JDK; OpenBabel is not required.", file=sys.stderr)
+        return 1
+    print("Demiurge production dependency preflight: PASS")
+    return 0
 
-print("\nAll required modules are installed.\n")
-input("Press ENTER to exit: ")
+
+if __name__ == "__main__":
+    raise SystemExit(main())

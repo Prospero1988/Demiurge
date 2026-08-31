@@ -1,0 +1,8 @@
+{
+  "contract": "SPECTRAPRINTS_NMR_V2",
+  "corpus": "validation/nmr_v2_parity_corpus.jsonl",
+  "corpus_sha256": "fe5803b2da1356e364224e90c0cb0fc543165e4b130b38d59a4b040528b29d3e",
+  "reference_repository": "screen_SPECTRAprints",
+  "reference_commit": "5c8537eeb8486b3287f0fe67c451f82f1a1a0dda",
+  "comparison": "zero-tolerance exact bytes/values"
+}
