@@ -5,8 +5,10 @@ import itertools
 import json
 import os
 import queue
+import shutil
 import subprocess
 import platform
+import sys
 import threading
 import time
 import tempfile
@@ -25,6 +27,8 @@ JAVA_PREDICTOR_MODE_ENV = "SPECTRAPRINTS_JAVA_PREDICTOR_MODE"
 JAVA_LIFECYCLE_ENV = "SPECTRAPRINTS_JAVA_LIFECYCLE"
 JAVA_PROTOCOL_TIMEOUT_ENV = "SPECTRAPRINTS_JAVA_PROTOCOL_TIMEOUT_SECONDS"
 JAVA_BUILD_DIR_ENV = "DEMIURGE_JAVA_BUILD_DIR"
+JAVA_EXECUTABLE_ENV = "DEMIURGE_JAVA"
+JAVAC_EXECUTABLE_ENV = "DEMIURGE_JAVAC"
 PREDICTOR_MODE_THREAD_LOCAL = "thread-local"
 PREDICTOR_MODE_PER_MOLECULE = "per-molecule"
 JAVA_LIFECYCLE_PER_BATCH = "per-batch"
@@ -39,6 +43,7 @@ _VALID_PREDICTOR_MODES = {
     PREDICTOR_MODE_THREAD_LOCAL,
     PREDICTOR_MODE_PER_MOLECULE,
 }
+_DEFAULT_BUILD_DIR: Path | None = None
 
 
 def _environment_flag(name: str) -> bool:
@@ -176,15 +181,55 @@ def _get_predictor_dir() -> Path:
 
 
 def _get_build_dir() -> Path:
-    """Return the package-local temporary Java build directory."""
+    """Return a writable, process/job-isolated Java build directory."""
+    global _DEFAULT_BUILD_DIR
     configured = os.environ.get(JAVA_BUILD_DIR_ENV, "").strip()
-    build_dir = (
-        Path(configured).expanduser().resolve()
-        if configured
-        else Path(tempfile.gettempdir()).resolve() / "demiurge_java_build"
-    )
-    build_dir.mkdir(parents=True, exist_ok=True)
+    if configured:
+        build_dir = Path(configured).expanduser().resolve()
+    else:
+        if _DEFAULT_BUILD_DIR is None:
+            base = Path(os.environ.get("SLURM_TMPDIR") or tempfile.gettempdir()).resolve()
+            uid = str(os.geteuid()) if hasattr(os, "geteuid") else "user"
+            job = os.environ.get("SLURM_JOB_ID", "local")
+            task = os.environ.get("SLURM_ARRAY_TASK_ID", "none")
+            _DEFAULT_BUILD_DIR = base / (
+                f"demiurge_java_build_u{uid}_j{job}_t{task}_p{os.getpid()}"
+            )
+        build_dir = _DEFAULT_BUILD_DIR
+    try:
+        build_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        probe = build_dir / f".write_probe_{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+    except OSError as error:
+        raise OSError(
+            f"Demiurge Java build directory is not writable: {build_dir}. "
+            f"Set {JAVA_BUILD_DIR_ENV} to an owned writable directory."
+        ) from error
     return build_dir
+
+
+def _resolve_java_tool(name: str) -> str:
+    environment_name = JAVA_EXECUTABLE_ENV if name == "java" else JAVAC_EXECUTABLE_ENV
+    configured = os.environ.get(environment_name, "").strip()
+    if configured:
+        path = Path(configured).expanduser().resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"{environment_name} does not name a file: {path}")
+        return str(path)
+    java_home = os.environ.get("JAVA_HOME", "").strip()
+    if java_home:
+        executable = name + (".exe" if platform.system() == "Windows" else "")
+        candidate = Path(java_home).expanduser().resolve() / "bin" / executable
+        if candidate.is_file():
+            return str(candidate)
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    raise FileNotFoundError(
+        f"Required Java tool {name!r} is unavailable. Put it on PATH, set JAVA_HOME, "
+        f"or set {environment_name}. A full JDK (not only a JRE) is required."
+    )
 
 
 def _get_java_targets(predictor: str) -> tuple[Path, Path, str]:
@@ -266,7 +311,7 @@ def _ensure_java_compiled(predictor: str) -> tuple[str, str]:
 
     if needs_compile:
         compile_command = [
-            "javac",
+            _resolve_java_tool("javac"),
             "-encoding",
             "UTF-8",
             "-classpath",
@@ -621,8 +666,13 @@ def run_java_batch_processor(
 
     try:
         classpath, main_class = _ensure_java_compiled(predictor)
-    except Exception:
-        return None
+    except Exception as error:
+        print(
+            f"Java initialization failed for {predictor}: "
+            f"{type(error).__name__}: {error}",
+            file=sys.stderr,
+        )
+        raise
 
     env = os.environ.copy()
     extra_tool_opts = "-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8"
@@ -637,7 +687,7 @@ def run_java_batch_processor(
             if processor is None:
                 diagnostic_paths = _diagnostic_paths(predictor)
                 java_command = [
-                    "java",
+                    _resolve_java_tool("java"),
                     f"-Xmx{java_heap}",
                     "-Dfile.encoding=UTF-8",
                     "-Dsun.jnu.encoding=UTF-8",
@@ -691,7 +741,7 @@ def run_java_batch_processor(
     diagnostic_paths = _diagnostic_paths(predictor)
 
     java_command = [
-        "java",
+        _resolve_java_tool("java"),
         f"-Xmx{java_heap}",
         "-Dfile.encoding=UTF-8",
         "-Dsun.jnu.encoding=UTF-8",

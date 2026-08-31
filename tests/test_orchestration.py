@@ -129,6 +129,7 @@ class OrchestrationTests(unittest.TestCase):
         self.assertIn("set -Eeuo pipefail", text)
         self.assertNotIn("--wrap", text)
         self.assertIn("python demiurge.py", text)
+        self.assertIn('DEMIURGE_JAVA_BUILD_DIR="${STAGING_DIRECTORY}/java_build"', text)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,10 @@ conda activate "${CONDA_ROOT}/envs/${CONDA_ENV}"
 cd -- "${DEMIURGE_PROJECT_ROOT}"
 
 mkdir -p -- "${DEMIURGE_VALIDATION_ROOT}" "${DEMIURGE_SCRATCH_ROOT}"
+export DEMIURGE_JAVA_BUILD_DIR="${DEMIURGE_SCRATCH_ROOT}/java_build_${SLURM_JOB_ID}"
+mkdir -p -m 700 -- "${DEMIURGE_JAVA_BUILD_DIR}"
+python install_modules.py
+python -c 'import json; from pathlib import Path; from demiurge_bin.contracts import verify_predictor_artifacts; print(json.dumps(verify_predictor_artifacts(Path.cwd()), sort_keys=True))'
 CORPUS="${SCREEN_PROJECT_ROOT}/validation/nmr_v2_parity_corpus.jsonl"
 
 python demiurge_nmr_v2_gate.py emit --implementation screen --screen-root "${SCREEN_PROJECT_ROOT}" --corpus "${CORPUS}" --output-root "${DEMIURGE_VALIDATION_ROOT}/screen_reference" --java-threads 2 --java-heap 4G --java-lifecycle persistent

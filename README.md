@@ -81,7 +81,7 @@ conda activate demiurge
 python install_modules.py
 ```
 
-The active runtime needs Python 3.12, NumPy, pandas, RDKit and a JDK providing `java` and `javac`. OpenBabel is deliberately absent. Java compilation is hash-aware and stored outside the checkout (`DEMIURGE_JAVA_BUILD_DIR` may override the system temporary cache).
+The active runtime needs Python 3.12, NumPy, pandas, RDKit and a JDK providing `java` and `javac`. OpenBabel is deliberately absent. Java compilation is hash-aware and stored outside the checkout. The default cache is isolated by user/job/process under `SLURM_TMPDIR` or the system temporary directory; `DEMIURGE_JAVA_BUILD_DIR` may select another owned writable directory. `DEMIURGE_JAVA` and `DEMIURGE_JAVAC` may point to explicit tools when `JAVA_HOME`/`PATH` are insufficient. Initialization and artifact-validation errors are fatal and retain their original exception.
 
 Input is a CSV containing `MOLECULE_NAME`, `SMILES` and the label column. `--label-column` is one-based and defaults to 3. Invalid molecules are retained as explicit failure metadata; only successful rows enter the final feature CSV.
 
