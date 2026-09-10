@@ -1,212 +1,225 @@
 # Demiurge
 
-Demiurge generates labeled molecular feature matrices for QSPR work. It is a standalone application: production execution, installation and validation require only this repository and its Conda environment. The production NMR path implements the validated `SPECTRAPRINTS_NMR_V2` representation historically defined with `screen_SPECTRAprints`; that repository is a reference source, not a runtime or deployment dependency. The former Demiurge ETKDG/CoordGen/OpenBabel representation is intentionally not preserved as a scientific parity target.
+![Demiurge logo](IMG/logo.png)
 
-The project supports two first-class execution modes over one scientific core:
+Demiurge is a production molecular-descriptor and machine-learning input generator. It converts labeled molecular structures into deterministic NMR-derived count vectors, ECFP4 fingerprints, or their concatenation. One scientific pipeline is shared by direct workstation runs and SLURM workers.
 
-- local mode for hundreds to thousands of molecules on a normal Ubuntu workstation;
-- SLURM mode for sharded, unattended cluster campaigns with staging, bounded retry and durable progress.
+The current implementation is a redesign of the original Demiurge pipeline. The historical ETKDG, CoordGen, and OpenBabel preparation route is no longer active. Production uses the validated `SPECTRAPRINTS_NMR_V2` contract, deterministic RDKit preparation, CDK `ModelBuilder3D` reconstruction where required, thread-confined Java predictors, persistent JVM processes, bounded batching, atomic commits, checkpoints, retries, and hash-pinned regression fixtures.
 
-Neither backend changes the representation. Scheduler, paths, scratch location, batch size, process count, Java thread count, heap and JVM lifecycle are operational settings and are excluded from scientific identity.
+## Scientific contract
 
-## Scientific contracts
+Available modes and feature layouts are frozen:
 
-The NMR V2 path is frozen as:
+| Mode | Feature layout | Width |
+|---|---|---:|
+| `1H` | indices 0–199: unnormalised 1H count buckets | 200 |
+| `13C` | indices 0–199: unnormalised 13C count buckets | 200 |
+| `hybrid` | 0–199: 1H; 200–399: 13C | 400 |
+| `FP` | indices 0–2047: ECFP4 bits | 2048 |
+| `total` | 0–199: 1H; 200–399: 13C; 400–2447: ECFP4 | 2448 |
+
+The scientific contracts are `DEMIURGE_1H_NMR_V2`, `DEMIURGE_13C_NMR_V2`, `DEMIURGE_HYBRID_NMR_V2_H_C`, `DEMIURGE_ECFP4`, and `DEMIURGE_TOTAL_NMR_V2_H_C_ECFP4`. The declared feature dtype is `float32`; CSV output serializes the exact integer bucket counts and fingerprint bits. ECFP4 uses radius 2, 2048 bits, and no chirality flag.
+
+NMR preparation is:
 
 ```text
 raw SMILES
-  -> RDKit canonical isomeric SMILES
-  -> explicit hydrogens
-  -> Compute2DCoords
-  -> RemoveStereochemistry
-  -> V3000 MOL bytes
-  -> Java/CDK ModelBuilder3D rebuild
-  -> 3D-first NMRshiftDB2 1H and 13C prediction
-  -> unnormalised count buckets
+→ canonical isomeric SMILES
+→ explicit hydrogens
+→ RDKit Compute2DCoords
+→ RemoveStereochemistry
+→ V3000 MOL
+→ Java/CDK ModelBuilder3D reconstruction
+→ 3D-first 1H and 13C prediction
+→ 200 + 200 count buckets
 ```
 
-The active path does not call ETKDG, CoordGen or OpenBabel. Java reports whether each prediction used native 3D, rebuilt 3D or the 2D branch. Prediction JARs are SHA-256 pinned and checked before NMR work:
-
-| Artifact | SHA-256 |
-|---|---|
-| `cdk-2.9.jar` | `60710218b8f9fd206e6151122e630c281462e9588e4b7a279c49c1532a8aeffe` |
-| `cdk-builder3d-2.9.jar` | `2c3add480bc7363b5fe6da076f873543b47355630149927b9420126af78542ca` |
-| `predictorc.jar` | `e3c3365fb3ffdccd79bb1c39c457c2486e6170f88eeaca5f36c09587950a5090` |
-| `predictorh.jar` | `529e2c89279aaafcf63347460775693d0ff5120d17dae051e31b9e55f6d1e67d` |
-
-Feature contracts and exact orders are:
-
-| Mode | Contract ID | Exact feature order | Dimension |
-|---|---|---|---:|
-| `1H` | `DEMIURGE_1H_NMR_V2` | 1H buckets, `[-1, 17]`, inclusive maximum | 200 |
-| `13C` | `DEMIURGE_13C_NMR_V2` | 13C buckets, `[-10, 230]`, inclusive maximum | 200 |
-| `hybrid` | `DEMIURGE_HYBRID_NMR_V2_H_C` | 1H then 13C | 400 |
-| `FP` | `DEMIURGE_ECFP4` | Morgan/ECFP4, radius 2, no chirality | 2048 |
-| `total` | `DEMIURGE_TOTAL_NMR_V2_H_C_ECFP4` | 1H then 13C then ECFP4 | 2448 |
-
-The migration is intentionally incompatible with models trained on the legacy Demiurge NMR representation. Such models must not consume NMR V2 features without retraining and an explicit deployment contract update. The ECFP4 component retains Demiurge's established 2048-bit contract.
+The NMR V2 representation is intentionally incompatible with models trained on the former legacy Demiurge spectra.
 
 ## Architecture
 
 ```text
-demiurge.py (local CLI) -------------------+
-                                             -> demiurge_bin/pipeline.py
-demiurge_supervisor.py -> SLURM worker -----+      | preparation.py
-                                                    | predictor.py -> persistent Java JVMs
-                                                    | bucketing.py
-                                                    | atomic batch commits/run_state.py
+demiurge.py / demiurge_supervisor.py
+                 │
+                 ▼
+          input records and labels
+                 │
+                 ▼
+       demiurge_bin/pipeline.py
+          ├─ preparation.py
+          ├─ predictor.py + Java/CDK
+          ├─ bucketing.py
+          ├─ ECFP4 composition
+          └─ run_state.py / atomic batches
+                 │
+                 ▼
+      CSV feature matrix + durable state
 ```
 
-`demiurge_bin/pipeline.py` is the only production feature pipeline. SLURM adds shard discovery, arrays, staging and resource policy; it does not contain molecule preparation, NMR, bucketing or fingerprint code.
+`demiurge.py` provides direct `run`, `resume`, and `status` commands. `demiurge_supervisor.py` adds only campaign discovery, SLURM arrays, staging, bounded retries, and campaign status. `orchestration/slurm_worker.sh` calls the same `demiurge.py` pipeline; orchestration contains no duplicate scientific implementation.
 
-Important files:
+## Requirements and installation
 
-- `demiurge.py`: `run`, `resume` and read-only `status` for one input;
-- `demiurge_bin/`: shared preparation, Java launcher, bucketing, composition and durable state;
-- `demiurge_supervisor.py`: campaign manifest, array submission/resume and campaign status;
-- `orchestration/slurm_worker.sh`: Bash worker using the same `demiurge.py` entry point;
-- `orchestration/staging.py`: hash-verified, marker-owned input/scratch staging;
-- `demiurge_nmr_v2_gate.py`: mandatory frozen-reference validation plus optional development cross-repository and backend/lifecycle comparison;
-- `demiurge_performance_gate.py`: QC-gated performance aggregation;
-- `validation/frozen_nmr_v2_expected/`: hash-pinned exact NMR V2 and total H|C|ECFP4 reference artifacts;
-- `demiurge_bin/legacy_gen_mols_etkdg.py` and `demiurge-old.py`: historical reference only.
+The supported environment is described by `conda_environment.yml`:
 
-## Environment
+- Python 3.12;
+- NumPy, pandas, and RDKit;
+- OpenJDK 23.0.2, including both `java` and `javac`;
+- a Bash environment for SLURM execution;
+- `/usr/bin/time` on workers for resource diagnostics.
 
-Create or update the self-contained Python/JDK environment:
+Create the environment and run the production preflight:
 
 ```bash
 conda env create -f conda_environment.yml
-# Existing environment:
-conda env update -n demiurge -f conda_environment.yml --prune
 conda activate demiurge
 python install_modules.py
 ```
 
-The environment pins OpenJDK 23.0.2 and therefore provides both `java` and `javac`; no system JDK is required. OpenBabel is deliberately absent. `python install_modules.py` reports the resolved Java/Javac paths and versions, verifies every scientific JAR hash, and proves the external build directory writable before expensive execution. Java compilation is hash-aware and stored outside the checkout. The default cache is isolated by user/job/process under `SLURM_TMPDIR` or the system temporary directory; `DEMIURGE_JAVA_BUILD_DIR` may select another owned writable directory. `DEMIURGE_JAVA` and `DEMIURGE_JAVAC` may point to explicit tools when needed. Initialization and artifact-validation errors are fatal and retain their original exception.
+The required predictor resources live in `predictor/`: `predictorh.jar`, `predictorc.jar`, `cdk-2.9.jar`, and `cdk-builder3d-2.9.jar`. Their SHA256 values are frozen in `demiurge_bin/contracts.py`; missing or changed artifacts fail closed. Java sources are compiled into an external, hash-aware cache. `DEMIURGE_JAVA_BUILD_DIR`, `DEMIURGE_JAVA`, and `DEMIURGE_JAVAC` may select explicit writable build storage or Java tools.
 
-Input is a CSV containing `MOLECULE_NAME`, `SMILES` and the label column. `--label-column` is one-based and defaults to 3. Invalid molecules are retained as explicit failure metadata; only successful rows enter the final feature CSV.
+OpenBabel is not a production dependency.
 
-## Local Ubuntu workflow
+## Input CSV
 
-Run a small `total` job:
+CSV input must contain exact columns `MOLECULE_NAME` and `SMILES`. The delimiter is detected automatically. `--label-column` is a one-based column position and defaults to 3; its values are copied unchanged to the output `LABEL` column and do not influence feature calculation. Blank identifiers, SMILES, or labels become explicit `INPUT_QC` failures.
+
+`input_example.csv` is a small semicolon-delimited example.
+
+## Standalone execution
+
+Run the full H|C|ECFP4 representation without SLURM:
 
 ```bash
 python demiurge.py run \
-  --input dataset.csv \
+  --input input_example.csv \
   --mode total \
-  --output-root ./results/run_001 \
-  --temp-root /tmp/demiurge_run_001 \
+  --output-root ./results/example_total \
+  --temp-root /tmp/demiurge_example_total \
+  --label-column 3 \
+  --batch-size 500 \
   --prep-workers 4 \
   --java-threads 2 \
   --java-heap 4G \
-  --batch-size 500 \
   --java-lifecycle persistent
 ```
 
-Resume a compatible interrupted/failed run and inspect durable progress:
+Operational options do not enter scientific identity. `persistent` is the validated default JVM lifecycle; `--java-lifecycle per-batch` remains available for debugging and A/B validation. Use `--retain-scientific-artifacts` when durable MOL and raw NMR files are required; otherwise they remain in marker-owned temporary storage and are deleted after shutdown.
+
+Resume a compatible interrupted run and inspect durable progress:
 
 ```bash
-python demiurge.py resume --output-root ./results/run_001 --temp-root /tmp/demiurge_run_001
-python demiurge.py status --output-root ./results/run_001
+python demiurge.py resume \
+  --output-root ./results/example_total \
+  --temp-root /tmp/demiurge_example_total
+
+python demiurge.py status --output-root ./results/example_total
 ```
 
-`per-batch` remains an explicit A/B/debug fallback through `--java-lifecycle per-batch`. Persistent is the production default.
+Resume validates input content and scientific configuration exactly. Scratch paths, worker counts, batching, JVM lifecycle, and execution backend are operational settings and do not alter scientific identity.
 
-## DGX/SLURM workflow
+## SLURM production execution
 
-`orchestration/config.toml` contains operational defaults only. The supplied production profile is persistent JVM, Java threads 2, Java heap 4G, preparation workers 4, batch 1000, 6 CPUs and 16G per task, with at most three attempts. Adapt partition, time, environment and paths for the deployment.
+Production defaults in `orchestration/config.toml` are `total`, label column 3, batch size 1000, four preparation workers, two Java threads, 4G Java heap, persistent JVM, six CPUs, 16G RAM, and at most three attempts.
+
+Submit one or more CSV shards:
 
 ```bash
-python demiurge_supervisor.py submit \
-  --project-root /raid/homes/$USER/Demiurge \
-  --input-dir /raid/data/demiurge_shards \
+/raid/soft/miniconda/envs/demiurge/bin/python /raid/homes/aleniak/Demiurge/demiurge_supervisor.py submit \
+  --project-root /raid/homes/aleniak/Demiurge \
+  --input-dir /raid/homes/aleniak/demiurge_inputs \
   --pattern '*.csv' \
-  --output-root /raid/results/demiurge \
-  --scratch-root /nvme/scratch/$USER/demiurge \
+  --output-root /raid/homes/aleniak/demiurge_runs \
+  --scratch-root /nvme/scratch/aleniak/demiurge_runs/production_001 \
   --campaign production_001
+```
 
+Important `submit` options are:
+
+- discovery: `--input-dir`, `--pattern`, `--campaign`;
+- durable/runtime paths: `--output-root`, `--scratch-root`, `--project-root`;
+- science selection: `--mode`, `--label-column`;
+- operational tuning: `--batch-size`, `--prep-workers`, `--java-threads`, `--java-heap`, `--java-lifecycle`;
+- scheduler resources: `--cpus-per-task`, `--memory`, `--partition`, `--time`, `--max-concurrent`, `--job-name-prefix`;
+- deployment: `--conda-root`, `--conda-env`, `--no-staging`, `--retain-scientific-artifacts`.
+
+`/nvme` is compute-node-local DGX storage. Do not create it from the login node. The path is recorded in the campaign manifest without requiring it to exist there; after SLURM starts, the worker creates an isolated marker-owned child, stages and hash-verifies the input, places temporary MOL/raw NMR/build data there, and removes only its owned directory during cleanup.
+
+Submission creates durable stdout/stderr directories before calling `sbatch`. The worker is a real Bash script with `set -Eeuo pipefail`; users should paste only the supervisor command into an interactive login shell, not wrap interactive commands in shell-wide `set -e` or `exit` guards.
+
+### Campaign status, retries, and resume
+
+```bash
 python demiurge_supervisor.py status \
-  --manifest /raid/results/demiurge/production_001/campaign_manifest.json
+  --manifest /raid/homes/aleniak/demiurge_runs/production_001/campaign_manifest.json
 
 python demiurge_supervisor.py resume \
-  --manifest /raid/results/demiurge/production_001/campaign_manifest.json
+  --manifest /raid/homes/aleniak/demiurge_runs/production_001/campaign_manifest.json
 ```
 
-Submission creates the stdout/stderr directory before `sbatch`. The worker is a real Bash script with `set -Eeuo pipefail`; no `--wrap`, Git checkout, NAS mount or implicit working directory is required. Inputs may be staged into a per-job scratch directory and verified by content hash. Scientific temporary MOL/raw spectra live in owned scratch; persistent batches, checkpoints, summaries, failures, diagnostics and logs remain under the output campaign. Cleanup can remove only a marker-owned child of the declared scratch root.
+The initial submission creates a dependency chain of at most three attempts. Each worker checks durable state before running; already completed tasks are skipped. Resume refuses to overlap an active recorded SLURM array, treats scheduler-expired historical job IDs as inactive, and remains fail-closed on unexpected scheduler errors. Status reads manifests and checkpoints rather than parsing logs and writes `production_progress.txt`.
 
-Three `afterany` arrays implement finite attempts. Completed/permanent tasks skip later arrays; classified transient failures may retry; unknown errors remain fail-closed. Resume refuses incompatible input content or scientific configuration and refuses while a recorded array is active. Historical job IDs absent from `squeue` are inactive; unexpected scheduler errors block resume.
+## Output layout
 
-## Durable outputs and recovery
+For campaign `<output-root>/<campaign>/`:
 
-Each run writes:
+```text
+campaign_manifest.json
+production_progress.txt
+logs/<array>_<task>.{out,err}
+attempt_history/task-*/attempt-*.json
+results/<input-stem>_<input-sha256-prefix>/
+  run_manifest.json
+  checkpoint.json
+  production_progress.txt
+  summary.json
+  failures.jsonl
+  diagnostics/
+  batches/batch_*/
+    features.csv
+    metadata.jsonl
+    commit.json
+    scientific_artifacts/        # only with --retain-scientific-artifacts
+  generated_ML_inputs/<input-stem>_<mode>_ML_input.csv
+```
 
-- `run_manifest.json`: frozen input/scientific identity and initial operational configuration;
-- `checkpoint.json`: atomic state, next row, committed batches, success/failure counts and heartbeat;
-- `batches/batch_*/`: atomic feature and metadata commits, optionally raw scientific artifacts;
-- `generated_ML_inputs/*_ML_input.csv`: assembled final matrix;
-- `failures.jsonl`: molecule-level identity, stage, type and message;
-- `summary.json`: final counts, hashes, timings, throughput and observability;
-- `production_progress.txt`: read-only-derived progress snapshot;
-- `diagnostics/`: Java and process diagnostics.
+Only successful molecules enter the final feature matrix. Each batch records all molecule outcomes in `metadata.jsonl`; failures are aggregated into `failures.jsonl`. Atomic batch directories are the resume boundary. The summary stores counts, timings, throughput, the final output path, and its SHA256.
 
-Batch directories become visible only after their feature, metadata and commit files are complete. Resume begins at the next durable row; scratch paths and execution backend are not resume identity. A status command reads manifests/checkpoints rather than parsing stdout.
+## Validation and reproducibility
 
-## Scientific validation
+The hash-pinned exact reference under `validation/frozen_nmr_v2_expected/` originates from validated DGX job 325965 and was not regenerated on Windows. It contains only deterministic scientific artifacts; GC logs, process IDs, timestamps, resource telemetry, and launcher diagnostics are excluded from the frozen contract.
 
-The mandatory Phase 0 deployment reference is committed under `validation/frozen_nmr_v2_expected`. Its manifest pins every expected artifact by SHA-256. These exact bytes were imported from canonical DGX job **325965** (`nmr_v2_spectraenv_20260831T130102Z`), which passed screen-reference versus Demiurge and per-batch versus persistent comparisons exactly; they were not regenerated on Windows. The originating `screen_SPECTRAprints` commit is `5c8537eeb8486b3287f0fe67c451f82f1a1a0dda`; the 12-molecule corpus SHA-256 is `fe5803b2da1356e364224e90c0cb0fc543165e4b130b38d59a4b040528b29d3e`. Normal validation verifies this inventory and never regenerates it.
+The validation gate compares canonical identity, V3000 MOL bytes, preparation outcomes, indexed raw 1H/13C CSVs, 3D branch status, NMR buckets, final H|C vectors, and total H|C|ECFP4 rows with zero tolerance. DGX job 326101 passed production dependency preflight, exact standalone NMR V2 parity, persistent/per-batch parity, and frozen total parity. The validated total fixture SHA256 is:
 
-Only deterministic scientific artifacts are frozen: canonical identities, preparation/prediction failure data, V3000 MOL bytes, raw indexed spectra, branch outcomes, bucket/H|C vectors, and the total H|C|ECFP4 smoke output. Checkpoints, summaries, timestamps, resource files, GC/JFR/launcher diagnostics, SLURM logs and performance aggregation are explicitly excluded. The reference is DGX/Linux byte-canonical: exact validation on a different platform may intentionally expose serializer, 2D-layout or newline differences instead of weakening the comparison. The complete old/new artifact inventory for the canonical import is recorded in `validation/nmr_v2_dgx_325965_import_manifest.json`.
+```text
+cab58dfc7c6ad0f835f30e4fa1929aca4882c47c19bdcf3841355a5b0c5cf607
+```
 
-The gate is zero-tolerance and fail-closed. It compares canonical identities, preparation success/failure, exact V3000 MOL bytes, indexed raw 1H/13C CSV bytes, per-molecule native-3D/rebuilt-3D/2D status, both 200-bin vectors and H|C. Full-run comparison additionally requires identical final rows, ECFP4/total composition, failures, canonical metadata and retained scientific artifacts.
-
-Standalone validation:
+Run the standalone frozen checks with:
 
 ```bash
-python install_modules.py
-python demiurge_nmr_v2_gate.py validate-standalone \
+python demiurge_nmr_v2_gate.py verify-reference \
   --reference-root validation/frozen_nmr_v2_expected \
-  --corpus validation/nmr_v2_parity_corpus.jsonl \
-  --output-root validation/results/demiurge_candidate \
-  --java-threads 2 --java-heap 4G --java-lifecycle persistent
+  --corpus validation/nmr_v2_parity_corpus.jsonl
 ```
 
-The supplied DGX SBATCH additionally executes `total` in per-batch and persistent modes, compares both runs exactly, and compares each against the frozen H|C|ECFP4 result. Backend and lifecycle equivalence is tested with `compare-runs` after retaining scientific artifacts. Cross-repository emission remains available only as an optional development check when the historical checkout is present. A production recommendation is permitted only for an exact/QC-clean run.
+The complete DGX validation wrapper is `benchmarks/demiurge_nmr_v2_validation.sbatch`. Exact MOL bytes can depend on validated RDKit/platform serialization; the DGX fixture is authoritative and comparisons intentionally remain byte-exact.
 
-```bash
-mkdir -p /raid/homes/$USER/demiurge_validation/logs /raid/homes/$USER/demiurge_validation/runs
-sbatch \
-  --output=/raid/homes/$USER/demiurge_validation/logs/nmr_v2_%j.out \
-  --error=/raid/homes/$USER/demiurge_validation/logs/nmr_v2_%j.err \
-  --export=ALL,DEMIURGE_PROJECT_ROOT=/raid/homes/$USER/Demiurge,DEMIURGE_VALIDATION_ROOT=/raid/homes/$USER/demiurge_validation/runs,DEMIURGE_SCRATCH_ROOT=/nvme/scratch/$USER/demiurge_validation \
-  /raid/homes/$USER/Demiurge/benchmarks/demiurge_nmr_v2_validation.sbatch
-```
+## Repository layout
 
-## Migration and optimization history
+- `demiurge.py` — direct production CLI;
+- `demiurge_bin/` — active scientific core and durable state;
+- `demiurge_supervisor.py` — production campaign orchestration;
+- `orchestration/` — SLURM worker, staging, and operational defaults;
+- `predictor/` — hash-pinned Java/CDK resources and Java sources;
+- `validation/` — canonical corpus and frozen scientific fixtures;
+- `benchmarks/` — controlled validation wrapper;
+- `tests/` — scientific, lifecycle, failure, and orchestration regression tests.
 
-| Phase/candidate | Change | Validation | Status |
-|---|---|---|---|
-| Legacy Demiurge | ETKDG retries, CoordGen/OpenBabel fallbacks and per-batch predictor | Historical behavior; not an NMR V2 parity target | ARCHIVED |
-| Phase 0 | Frozen corpus, reference provenance and exact cross-repository gate | Local official-corpus comparison against validated screen implementation: exact PASS | ACCEPTED |
-| Phase 1 | Exact NMR V2 RDKit preparation and 200+200 buckets | Canonical SMILES and V3000 MOL byte parity; bucket boundary tests | ACCEPTED |
-| Phase 2 | Thread-confined `PredictionTool` and per-molecule `usedHoseCodes` reset | Exact per-batch/persistent, repeated and multi-thread raw spectra | ACCEPTED |
-| Phase 3 | Persistent 1H/13C JVM services with safe argv launcher and diagnostics | Exact Java integration and full-run lifecycle comparison | ACCEPTED |
-| Phase 4 | Persistent preparation pool, batches, atomic commits, retry/resume | Failure/recovery and backend-equivalence tests | ACCEPTED |
-| Phase 5 | Manifest-driven SLURM arrays, staging, status and bounded retries | Local orchestration tests and Bash validation; real DGX execution pending | ACCEPTED LOCALLY |
-| Phase 6 | Production defaults, dependency cleanup and documentation | OpenBabel removed; hash-pinned artifacts and full local suite | ACCEPTED LOCALLY |
-
-The corrected migration rejected two ideas: preserving legacy spectra as the parity target, and maintaining ETKDG/OpenBabel as a production/fallback mode. The known legacy 1H differences are expected evidence of the deliberate representation change, not a regression. No scientific optimization that failed NMR V2 parity was adopted.
-
-The validated screen pipeline supplied the persistent/thread-local design evidence, but its screening throughput is not reported here as Demiurge performance. A four-molecule Windows integration smoke (two batches, 2 Java threads, 2 preparation workers) measured 8.728 s for per-batch JVM versus 6.114 s for persistent JVM, a 1.427x smoke-only speedup; all final rows and retained scientific artifacts were exact. This workload is too small for a production recommendation. The old README quoted approximately 6 minutes for 1H and 15 minutes for 13C per roughly 1000 molecules on an 8-core workstation; that was legacy code, hardware-unspecified and not a valid NMR V2 baseline. A production-like Demiurge DGX benchmark remains required before publishing representative before/after speedup.
-
-## Current status
-
-- **READY locally:** standalone scientific core, local CLI, checkpoint/resume, diagnostics and hash-pinned exact self-validation.
-- **READY for controlled DGX validation:** the standalone SLURM gate, staging, retry/status and pinned Conda JDK are implemented without executing a cluster job from this repository task.
-- **PENDING before production-scale use:** run the supplied DGX parity/lifecycle gate on a representative labeled dataset, review QC/failures and record measured resource/performance results.
+The obsolete original execution stack is retained in Git history and on the `GPT_corrected` reference branch, not in the production source tree.
 
 ## Citation and license
 
-Leniak, A.; Pietruś, W.; Kurczab, R. *From NMR to AI: Fusing 1H and 13C Representations for Enhanced QSPR Modeling.* J. Chem. Inf. Model. 2025. [https://doi.org/10.1021/acs.jcim.5c01791](https://doi.org/10.1021/acs.jcim.5c01791).
+Leniak, A.; Pietruś, W.; Kurczab, R. *From NMR to AI: Fusing 1H and 13C Representations for Enhanced QSPR Modeling.* J. Chem. Inf. Model. 2025. <https://doi.org/10.1021/acs.jcim.5c01791>.
 
-The project is distributed under the MIT License. NMR prediction uses the NMRshiftDB2 predictor artifacts; verify their applicable terms for deployment.
+See `LICENSE` for repository licensing terms.

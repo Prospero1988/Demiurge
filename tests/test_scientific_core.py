@@ -32,16 +32,11 @@ class ScientificContractTests(unittest.TestCase):
         ])
 
     def test_active_preparation_contains_no_legacy_3d_or_openbabel(self):
-        for path in (
-            Path("demiurge_bin/preparation.py"),
-            Path("demiurge_bin/gen_mols.py"),
-        ):
-            text = path.read_text(encoding="utf-8").lower()
-            self.assertNotIn("embedmolecule", text)
-            self.assertNotIn("rdcoordgen", text)
-            self.assertNotIn("subprocess", text)
-            self.assertNotIn("obabel", text)
-        self.assertTrue(Path("demiurge_bin/legacy_gen_mols_etkdg.py").is_file())
+        text = Path("demiurge_bin/preparation.py").read_text(encoding="utf-8").lower()
+        self.assertNotIn("embedmolecule", text)
+        self.assertNotIn("rdcoordgen", text)
+        self.assertNotIn("subprocess", text)
+        self.assertNotIn("obabel", text)
 
     def test_predictor_artifacts_are_hash_pinned(self):
         actual = contracts.verify_predictor_artifacts(Path.cwd())

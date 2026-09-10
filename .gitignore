@@ -54,11 +54,22 @@ run_manifest.json
 !validation/*.csv
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.parquet
+*.npy
+*.npz
 
 # Java compilation is hash-aware and uses an external build cache.
 *.class
+java_build/
+.demiurge-*/
 
 # Immutable, hash-pinned scientific validation fixtures are source artifacts.
 !validation/frozen_nmr_v2_expected/
