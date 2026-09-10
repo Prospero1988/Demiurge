@@ -110,6 +110,21 @@ class ParityComparatorTests(unittest.TestCase):
         self.assertIn("validate-standalone", script)
         self.assertIn("frozen_nmr_v2_expected", script)
 
+    def test_imported_run_resolves_final_output_inside_current_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            local = root / "generated_ML_inputs" / "result.csv"
+            local.parent.mkdir()
+            local.write_bytes(b"scientific rows\n")
+            summary = {
+                "final_output": "/unavailable/original/DGX/path/result.csv",
+                "final_output_sha256": gate.file_sha256(local),
+            }
+            self.assertEqual(gate._resolve_run_final_output(root, summary), local)
+            summary["final_output_sha256"] = "0" * 64
+            with self.assertRaisesRegex(RuntimeError, "summary hash"):
+                gate._resolve_run_final_output(root, summary)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,8 +27,8 @@ VALIDATION_INPUT=${DEMIURGE_VALIDATION_INPUT:-"${DEMIURGE_PROJECT_ROOT}/validati
 
 python demiurge_nmr_v2_gate.py validate-standalone --reference-root "${REFERENCE_ROOT}" --corpus "${CORPUS}" --output-root "${RUN_ROOT}/demiurge_candidate" --java-threads 2 --java-heap 4G --java-lifecycle persistent
 
-/usr/bin/time -v -o "${RUN_ROOT}/per_batch.resources.txt" python demiurge.py run --input "${VALIDATION_INPUT}" --mode total --output-root "${RUN_ROOT}/per_batch" --temp-root "${DEMIURGE_SCRATCH_ROOT}" --prep-workers 4 --java-threads 2 --java-heap 4G --batch-size 2 --java-lifecycle per-batch --retain-scientific-artifacts --backend slurm-worker
-/usr/bin/time -v -o "${RUN_ROOT}/persistent.resources.txt" python demiurge.py run --input "${VALIDATION_INPUT}" --mode total --output-root "${RUN_ROOT}/persistent" --temp-root "${DEMIURGE_SCRATCH_ROOT}" --prep-workers 4 --java-threads 2 --java-heap 4G --batch-size 2 --java-lifecycle persistent --retain-scientific-artifacts --backend slurm-worker
+/usr/bin/time -v -o "${RUN_ROOT}/per_batch.resources.txt" python demiurge.py run --input "${VALIDATION_INPUT}" --mode total --output-root "${RUN_ROOT}/per_batch" --temp-root "${DEMIURGE_SCRATCH_ROOT}" --prep-workers 4 --java-threads 2 --java-heap 4G --batch-size 500 --java-lifecycle per-batch --retain-scientific-artifacts --backend slurm-worker
+/usr/bin/time -v -o "${RUN_ROOT}/persistent.resources.txt" python demiurge.py run --input "${VALIDATION_INPUT}" --mode total --output-root "${RUN_ROOT}/persistent" --temp-root "${DEMIURGE_SCRATCH_ROOT}" --prep-workers 4 --java-threads 2 --java-heap 4G --batch-size 500 --java-lifecycle persistent --retain-scientific-artifacts --backend slurm-worker
 
 python demiurge_nmr_v2_gate.py compare-runs --left-output "${RUN_ROOT}/per_batch" --right-output "${RUN_ROOT}/persistent"
 python demiurge_nmr_v2_gate.py compare-frozen-run --reference-root "${REFERENCE_ROOT}" --candidate-output "${RUN_ROOT}/per_batch"

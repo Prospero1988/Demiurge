@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "source": "validated DGX job 325965",
+  "source_run": "nmr_v2_spectraenv_20260831T130102Z",
+  "statement": "Artifacts were copied from the imported canonical DGX run and were not regenerated locally.",
+  "changed_artifact_count": 54,
+  "changes": [
+    {
+      "status": "REPLACE",
+      "path": "nmr/mols/aromatic_benzene.mol",
+      "old_sha256": "8f8b180a3ca8a004956ac9615f65aabe4930cf1f9121c63655a4c4091581ed09",
+      "new_sha256": "372782560b1157b261d5ef48bea7b6a3116731b6248f239310252a4bb4512776",
+      "classification": "canonical_dgx_rdkit_v3000_kekule_assignment"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/mols/ez_cis_difluoroethene.mol",
+      "old_sha256": "44f57f8d30054231d62e1e38ab1742eb730cba542e63b120680b459bf949fed0",
+      "new_sha256": "5f3d2dae9b570d6bc9801a916f514eee9c7fe26f98ef439f5820a87bef06b6b0",
+      "classification": "canonical_dgx_rdkit_v3000_signed_zero_serialization"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/mols/tetrahedral_l_alanine.mol",
+      "old_sha256": "a8d6332cce879a3ec63b4408781310c9f91a5df6d7c019a75cada4e86198dc3c",
+      "new_sha256": "47801fa7559050d14bf63765680e9acad90448e18cf360b6d0e5ab8146a2b0e4",
+      "classification": "canonical_dgx_rdkit_compute2dcoords_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/.spectraprints_unified_profile_branches.jsonl",
+      "old_sha256": "1890800cf3c763eaa2ec80b8e462bf1a8bf02663cba1e83d2cecd98dd0cc20c4",
+      "new_sha256": "d3f42336fc1fc665713a146fb634bd0e2a04adce78c39a77eb3f4a04c39bd8c4",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/aromatic_benzene.csv",
+      "old_sha256": "acf5f9cad17043342fff5a3dd682c85fde9b3149847d00d08270dc4321fb3578",
+      "new_sha256": "a4090b871d487e27038cb40542f74ad9bb5ab44daf87e4974a17aa496d17fc55",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/charged_tetramethylammonium.csv",
+      "old_sha256": "bf9ffdde8e5c65d763323fa0a4944cdae5d2245ba29bc36de7f6a4ed08f932d7",
+      "new_sha256": "4a6dbb0a1b811f5f17d9337078ba30c21d648765011b2de15eb84c75bea3c67b",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/constrained_adamantane.csv",
+      "old_sha256": "499e61367c2776ccafafe3aaaecf1e630aa8ca8089396149755152dec67fc7b3",
+      "new_sha256": "a42b3ae1b259a0b22253c7d79d940c5505922f5f36e6d583521fc4814871ffbb",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/ez_cis_difluoroethene.csv",
+      "old_sha256": "6923bbf12dcd3160d35377daa7bc65b21bea6d51916bd013fce7f2d4f43f5370",
+      "new_sha256": "5a43ef573f2ee726c8c55d4ba89697fd9dfebdb6d11d8ad7caf9691c2009c952",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/ez_trans_difluoroethene.csv",
+      "old_sha256": "6923bbf12dcd3160d35377daa7bc65b21bea6d51916bd013fce7f2d4f43f5370",
+      "new_sha256": "5a43ef573f2ee726c8c55d4ba89697fd9dfebdb6d11d8ad7caf9691c2009c952",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/flexible_octanol.csv",
+      "old_sha256": "2c50c5bdcae220dd773e738fed2325e41d0d022b366e76c084be68636853c1d8",
+      "new_sha256": "ad2d881fd7154e1199483a42977958e69c05efc50c3519c4d213d9ecdd11a681",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/fused_naphthalene.csv",
+      "old_sha256": "8a1f553e3323f4f08718627c03444afb0218f9960d5b732cc5de06210a4dca4b",
+      "new_sha256": "0ff76ae9773f3a64447cea9bef19acbb3f738a0c5f69b7eb1b197481f15e76ff",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/heterocycle_imidazole.csv",
+      "old_sha256": "d57752a1f370b2b7f62d59053021435d431487473d26e67c6b995b348d022f3e",
+      "new_sha256": "66dc3559cec55253f1153c6cc83a9b0a0cddd6833e39913dd7951b00fbfd67ba",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/multiple_rings_bicyclohexyl.csv",
+      "old_sha256": "8f746be96822ac95f03cba2a14497d878855faf2ee12aea18c9f17413ba0f08e",
+      "new_sha256": "f1160c4a26b0f70506aefa118a3fdd6c8618938bbfe121b161ed7c0f82062ddf",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/ordinary_ethanol.csv",
+      "old_sha256": "491531e3090d21ed87c01cd7e23063468e2b5ef4209e7c25a0efd838a97003ce",
+      "new_sha256": "ef9f2551adc7fb40595d41195f76d1c9131fd617fe0f0cb645c85d83cc8fe2ce",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/tetrahedral_l_alanine.csv",
+      "old_sha256": "71c89d41e4db3fbc5e2e81ce811458cf0384c679206e3a327952ee7c49355eb6",
+      "new_sha256": "76208e3f72c330d066ea9b28d81aa50ad6cc53d0b9b753baed66c62414d96fa2",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_13c/zwitterion_glycine.csv",
+      "old_sha256": "3de4e10a1094c03b352ced2d0f23228f0a2653661429e00cb466a055c0d5db12",
+      "new_sha256": "ba401665e14df7f3e0c32a2b9390603f9f4d4ccfa1e53c42c2a9db257b0e00d6",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/.spectraprints_unified_profile_branches.jsonl",
+      "old_sha256": "aeab222b7594eb9739fcf32516d7d6606bdd835c4a10bd7023a6e520f5a795c8",
+      "new_sha256": "2b353de4a53212b9ea8f2eddbcf39cb0c89a24047e4c2ecf479734153a4d1215",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/aromatic_benzene.csv",
+      "old_sha256": "ea209f9d6b1d580d5b7b8a44eaaf7e39ddd17571611db7037fd76e879a8f206e",
+      "new_sha256": "a4670a924b7dc9e28247c936d45a6a4f62f726c024e5bad6d9fdd3a0ccf46924",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/charged_tetramethylammonium.csv",
+      "old_sha256": "67adf89f72ce67a24f20f09798655d9d9c18563f6101237948b5c7678ede3014",
+      "new_sha256": "9ea19a6244c5eeff42ea9db2e481679d6883030b79c66e55da9dbfcf48b096f8",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/constrained_adamantane.csv",
+      "old_sha256": "94e87fc6ffa86e106cc829da54baf071d8e81020c8d18dbcd335abe79c144145",
+      "new_sha256": "ac4c0d81af6194d0b2469a301781c3842f17b21de77be139442eacf1266b9da7",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/ez_cis_difluoroethene.csv",
+      "old_sha256": "fc992c30240cb4e72e28c33cdcb816f9f0ba20a513590c2b94246d487053578c",
+      "new_sha256": "4133bd34f84ec10e7826780bfb46af9d61604c08fad6ce3ec9af9af998d52993",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/ez_trans_difluoroethene.csv",
+      "old_sha256": "fc992c30240cb4e72e28c33cdcb816f9f0ba20a513590c2b94246d487053578c",
+      "new_sha256": "4133bd34f84ec10e7826780bfb46af9d61604c08fad6ce3ec9af9af998d52993",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/flexible_octanol.csv",
+      "old_sha256": "a6f93dd78742df4d44eef08d3add869b94c30118c4bd822d7da7adc3ed842be6",
+      "new_sha256": "cbb48c0e32c4d8a4f60febac0099e92f557eefcb925897c9bb610fe1f79f3fb2",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/fused_naphthalene.csv",
+      "old_sha256": "9b8f5688a68c9d5049d64d2b30899f9b8bb94fe6d0d7481d44c70f881b73d081",
+      "new_sha256": "3ff13ac7365109170e5d91d268aee5fefec4cf7146a2611fad0b08f381d71568",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/heterocycle_imidazole.csv",
+      "old_sha256": "47f469af813dface712194560305655df23ead1dabfd896fe474548c9919c873",
+      "new_sha256": "84cebf2cbc7a48ea28d5f3ccc59b5307926becdb28b5d9cef1cc273acbdd2d89",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/multiple_rings_bicyclohexyl.csv",
+      "old_sha256": "c68d44f1e9ce4b433912fea729b195ff04fa92dadf2cbd144152a348ac61fc11",
+      "new_sha256": "d5bc00ee1f7cc9bc8154be1bd560cf3520d2e93c8b01b5f8e99e5e19beaef411",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/ordinary_ethanol.csv",
+      "old_sha256": "508e7f8e5fa37372e49decd677a465bf23cd54b914432051b0901bd3746e2535",
+      "new_sha256": "d0fc1527cfe28f8a743e7f88e1275bf18d09e456c2d6e46989f64e1a451ca491",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/tetrahedral_l_alanine.csv",
+      "old_sha256": "b6942ddfc4530c60280dbc45ca0c30243bfd7ec43f0b1d1460c7d393c82b11e6",
+      "new_sha256": "252832d5520fe410509a1c5436c27f31079449cd7b4ddecb9e7653928eff6963",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "nmr/raw_1h/zwitterion_glycine.csv",
+      "old_sha256": "c8d3f0d2b4d9638ecc3d6c9d7621328809bb218d45c07abde12a95acb15fee61",
+      "new_sha256": "79c057286615c04fac6d5fce7fa80ff0821f227c55ee23109a5cd1114cfc91b6",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/features.csv",
+      "old_sha256": "f1820ea22b6e87212af03913c14bf75e8afef251cfd2c406f57ccccfef4a5f07",
+      "new_sha256": "cab58dfc7c6ad0f835f30e4fa1929aca4882c47c19bdcf3841355a5b0c5cf607",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/metadata.jsonl",
+      "old_sha256": "636a4b5fbc6a0ef8e7550c4cbca734739f755df331f04f5d638f0f1a09a0c48a",
+      "new_sha256": "46e1aa24fc4a25146002384a9a9eb046fbcca806f36939225359a9ab3e21ff88",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/mols/m00000001.mol",
+      "old_sha256": "8f8b180a3ca8a004956ac9615f65aabe4930cf1f9121c63655a4c4091581ed09",
+      "new_sha256": "372782560b1157b261d5ef48bea7b6a3116731b6248f239310252a4bb4512776",
+      "classification": "canonical_dgx_rdkit_v3000_kekule_assignment"
+    },
+    {
+      "status": "ADD",
+      "path": "total/batches/batch_00000000/scientific_artifacts/mols/m00000002.mol",
+      "old_sha256": null,
+      "new_sha256": "47801fa7559050d14bf63765680e9acad90448e18cf360b6d0e5ab8146a2b0e4",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "ADD",
+      "path": "total/batches/batch_00000000/scientific_artifacts/mols/m00000003.mol",
+      "old_sha256": null,
+      "new_sha256": "fee398a2501c21484bb9caa078a2f3ba354b952cd9bfc0a32e4ab2094142b565",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_13c/.spectraprints_unified_profile_branches.jsonl",
+      "old_sha256": "d3883652ac1945b176881d3475493e40b203001deecf7643a1fcb749e4d1914e",
+      "new_sha256": "53082ee1a5d2824a22bbf8feb277c812136aff8b088862972e11cfa927df609d",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_13c/m00000000.csv",
+      "old_sha256": "491531e3090d21ed87c01cd7e23063468e2b5ef4209e7c25a0efd838a97003ce",
+      "new_sha256": "ef9f2551adc7fb40595d41195f76d1c9131fd617fe0f0cb645c85d83cc8fe2ce",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_13c/m00000001.csv",
+      "old_sha256": "acf5f9cad17043342fff5a3dd682c85fde9b3149847d00d08270dc4321fb3578",
+      "new_sha256": "a4090b871d487e27038cb40542f74ad9bb5ab44daf87e4974a17aa496d17fc55",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "ADD",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_13c/m00000002.csv",
+      "old_sha256": null,
+      "new_sha256": "76208e3f72c330d066ea9b28d81aa50ad6cc53d0b9b753baed66c62414d96fa2",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "ADD",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_13c/m00000003.csv",
+      "old_sha256": null,
+      "new_sha256": "4a6dbb0a1b811f5f17d9337078ba30c21d648765011b2de15eb84c75bea3c67b",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_1h/.spectraprints_unified_profile_branches.jsonl",
+      "old_sha256": "85e0c8899d471743571c6b428ff5ec9765c1312c526348d01d41d36ced374268",
+      "new_sha256": "5c69756dc91c23f2b33d836ce71787dfdfcfc62c23375d11d92f140d32707678",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_1h/m00000000.csv",
+      "old_sha256": "508e7f8e5fa37372e49decd677a465bf23cd54b914432051b0901bd3746e2535",
+      "new_sha256": "d0fc1527cfe28f8a743e7f88e1275bf18d09e456c2d6e46989f64e1a451ca491",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "REPLACE",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_1h/m00000001.csv",
+      "old_sha256": "ea209f9d6b1d580d5b7b8a44eaaf7e39ddd17571611db7037fd76e879a8f206e",
+      "new_sha256": "a4670a924b7dc9e28247c936d45a6a4f62f726c024e5bad6d9fdd3a0ccf46924",
+      "classification": "windows_crlf_to_canonical_dgx_lf"
+    },
+    {
+      "status": "ADD",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_1h/m00000002.csv",
+      "old_sha256": null,
+      "new_sha256": "252832d5520fe410509a1c5436c27f31079449cd7b4ddecb9e7653928eff6963",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "ADD",
+      "path": "total/batches/batch_00000000/scientific_artifacts/raw_1h/m00000003.csv",
+      "old_sha256": null,
+      "new_sha256": "9ea19a6244c5eeff42ea9db2e481679d6883030b79c66e55da9dbfcf48b096f8",
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/features.csv",
+      "old_sha256": "6d28702312d672b96e864d6e7ed011226f455c54a8d6a6f8584f927744d773e8",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/metadata.jsonl",
+      "old_sha256": "925268be3b4b03c0fcf703672cd25ddd59c0014c7c98fd24c876ad9c752ef96d",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/mols/m00000002.mol",
+      "old_sha256": "a8d6332cce879a3ec63b4408781310c9f91a5df6d7c019a75cada4e86198dc3c",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/mols/m00000003.mol",
+      "old_sha256": "fee398a2501c21484bb9caa078a2f3ba354b952cd9bfc0a32e4ab2094142b565",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/raw_13c/.spectraprints_unified_profile_branches.jsonl",
+      "old_sha256": "42453d56a1e852ffca80a8ee90ff538172c61b8d5e2087b3a80c7c2cb8d0578c",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/raw_13c/m00000002.csv",
+      "old_sha256": "71c89d41e4db3fbc5e2e81ce811458cf0384c679206e3a327952ee7c49355eb6",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/raw_13c/m00000003.csv",
+      "old_sha256": "bf9ffdde8e5c65d763323fa0a4944cdae5d2245ba29bc36de7f6a4ed08f932d7",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/raw_1h/.spectraprints_unified_profile_branches.jsonl",
+      "old_sha256": "01cdc562ff1b83d28d07243c4eb9ce2ce848e17847a9542094f8cb801b08076a",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/raw_1h/m00000002.csv",
+      "old_sha256": "b6942ddfc4530c60280dbc45ca0c30243bfd7ec43f0b1d1460c7d393c82b11e6",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    },
+    {
+      "status": "REMOVE",
+      "path": "total/batches/batch_00000001/scientific_artifacts/raw_1h/m00000003.csv",
+      "old_sha256": "67adf89f72ce67a24f20f09798655d9d9c18563f6101237948b5c7678ede3014",
+      "new_sha256": null,
+      "classification": "canonical_dgx_batch_layout"
+    }
+  ]
+}

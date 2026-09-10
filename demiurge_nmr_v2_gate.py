@@ -328,6 +328,21 @@ def _collect_run_metadata(root: Path) -> list[dict[str, Any]]:
     return sorted(values, key=lambda item: int(item["source_index"]))
 
 
+def _resolve_run_final_output(root: Path, summary: dict[str, Any]) -> Path:
+    """Resolve a moved/imported run without trusting its historical absolute path."""
+    declared = str(summary.get("final_output") or "")
+    filename = Path(declared).name
+    if not filename or filename in (".", ".."):
+        raise RuntimeError("Run summary has no valid final output filename")
+    local = root / "generated_ML_inputs" / filename
+    if not local.is_file():
+        raise RuntimeError(f"Run-local final feature CSV is missing: {local}")
+    expected_hash = summary.get("final_output_sha256")
+    if not expected_hash or file_sha256(local) != expected_hash:
+        raise RuntimeError("Run-local final feature CSV does not match its summary hash")
+    return local
+
+
 def compare_runs(args: argparse.Namespace) -> int:
     left = args.left_output.expanduser().resolve()
     right = args.right_output.expanduser().resolve()
@@ -338,7 +353,11 @@ def compare_runs(args: argparse.Namespace) -> int:
     for key in ("total", "successful", "failed"):
         if left_summary[key] != right_summary[key]:
             raise RuntimeError(f"Run summary scientific count differs: {key}")
-    _compare_file(Path(left_summary["final_output"]), Path(right_summary["final_output"]), "final feature CSV")
+    _compare_file(
+        _resolve_run_final_output(left, left_summary),
+        _resolve_run_final_output(right, right_summary),
+        "final feature CSV",
+    )
     _compare_file(left / "failures.jsonl", right / "failures.jsonl", "failure identities/reasons")
     if _collect_run_metadata(left) != _collect_run_metadata(right):
         raise RuntimeError("Run canonical identities, feature hashes or failure metadata differ")
@@ -368,7 +387,7 @@ def compare_frozen_run(args: argparse.Namespace) -> int:
     for key in ("total", "successful", "failed"):
         if summary.get(key) != expected_counts.get(key):
             raise RuntimeError(f"Candidate run scientific count differs from frozen reference: {key}")
-    _compare_file(expected / "final_features.csv", Path(summary["final_output"]), "frozen total H|C|ECFP4 rows")
+    _compare_file(expected / "final_features.csv", _resolve_run_final_output(candidate, summary), "frozen total H|C|ECFP4 rows")
     _compare_file(expected / "failures.jsonl", candidate / "failures.jsonl", "frozen failure identities/reasons")
     expected_batches = expected / "batches"
     for path in sorted(expected_batches.rglob("*")):
