@@ -4,24 +4,28 @@
 from __future__ import annotations
 
 import importlib.util
-import shutil
+import json
 import sys
+
+from demiurge_bin.preflight import run_preflight
 
 
 REQUIRED_MODULES = ("numpy", "pandas", "rdkit")
-REQUIRED_EXECUTABLES = ("java", "javac")
 
 
 def main() -> int:
     missing_modules = [name for name in REQUIRED_MODULES if importlib.util.find_spec(name) is None]
-    missing_commands = [name for name in REQUIRED_EXECUTABLES if shutil.which(name) is None]
-    if missing_modules or missing_commands:
+    if missing_modules:
         if missing_modules:
             print("Missing Python modules: " + ", ".join(missing_modules), file=sys.stderr)
-        if missing_commands:
-            print("Missing commands: " + ", ".join(missing_commands), file=sys.stderr)
-        print("Create conda_environment.yml and install a JDK; OpenBabel is not required.", file=sys.stderr)
+        print("Create/update the Conda environment from conda_environment.yml.", file=sys.stderr)
         return 1
+    try:
+        report = run_preflight()
+    except Exception as error:
+        print(f"Demiurge production dependency preflight: FAIL: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2, sort_keys=True))
     print("Demiurge production dependency preflight: PASS")
     return 0
 

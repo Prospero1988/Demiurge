@@ -11,3 +11,7 @@
 *.md text eol=lf
 *.jar binary
 *.png binary
+
+# Frozen scientific fixtures are byte-level reference artifacts. Never perform
+# newline or encoding conversion on checkout/add on any platform.
+validation/frozen_nmr_v2_expected/** binary !eol

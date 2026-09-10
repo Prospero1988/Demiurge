@@ -6,8 +6,9 @@ dependencies:
   - numpy
   - pandas
   - rdkit
+  # Full, pinned JDK: both java and javac are deployment requirements.
+  - openjdk=23.0.2
   - pip
 
-# Java is intentionally external to Conda. A JDK providing both java and javac
-# must be on PATH. OpenBabel is intentionally absent: it is not part of the
-# production SPECTRAPRINTS_NMR_V2 preparation contract.
+# OpenBabel is intentionally absent: it is not part of the production
+# SPECTRAPRINTS_NMR_V2 preparation contract.

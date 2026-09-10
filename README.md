@@ -1,6 +1,6 @@
 # Demiurge
 
-Demiurge generates labeled molecular feature matrices for QSPR work. The production NMR path now implements the same validated `SPECTRAPRINTS_NMR_V2` representation as `screen_SPECTRAprints`; the former Demiurge ETKDG/CoordGen/OpenBabel representation is intentionally not preserved as a scientific parity target.
+Demiurge generates labeled molecular feature matrices for QSPR work. It is a standalone application: production execution, installation and validation require only this repository and its Conda environment. The production NMR path implements the validated `SPECTRAPRINTS_NMR_V2` representation historically defined with `screen_SPECTRAprints`; that repository is a reference source, not a runtime or deployment dependency. The former Demiurge ETKDG/CoordGen/OpenBabel representation is intentionally not preserved as a scientific parity target.
 
 The project supports two first-class execution modes over one scientific core:
 
@@ -66,22 +66,24 @@ Important files:
 - `demiurge_supervisor.py`: campaign manifest, array submission/resume and campaign status;
 - `orchestration/slurm_worker.sh`: Bash worker using the same `demiurge.py` entry point;
 - `orchestration/staging.py`: hash-verified, marker-owned input/scratch staging;
-- `demiurge_nmr_v2_gate.py`: exact cross-repository and backend/lifecycle comparison;
+- `demiurge_nmr_v2_gate.py`: mandatory frozen-reference validation plus optional development cross-repository and backend/lifecycle comparison;
 - `demiurge_performance_gate.py`: QC-gated performance aggregation;
-- `validation/`: frozen parity corpus and provenance;
+- `validation/frozen_nmr_v2_expected/`: hash-pinned exact NMR V2 and total H|C|ECFP4 reference artifacts;
 - `demiurge_bin/legacy_gen_mols_etkdg.py` and `demiurge-old.py`: historical reference only.
 
 ## Environment
 
-Create the Python environment and make a JDK available:
+Create or update the self-contained Python/JDK environment:
 
 ```bash
 conda env create -f conda_environment.yml
+# Existing environment:
+conda env update -n demiurge -f conda_environment.yml --prune
 conda activate demiurge
 python install_modules.py
 ```
 
-The active runtime needs Python 3.12, NumPy, pandas, RDKit and a JDK providing `java` and `javac`. OpenBabel is deliberately absent. Java compilation is hash-aware and stored outside the checkout. The default cache is isolated by user/job/process under `SLURM_TMPDIR` or the system temporary directory; `DEMIURGE_JAVA_BUILD_DIR` may select another owned writable directory. `DEMIURGE_JAVA` and `DEMIURGE_JAVAC` may point to explicit tools when `JAVA_HOME`/`PATH` are insufficient. Initialization and artifact-validation errors are fatal and retain their original exception.
+The environment pins OpenJDK 23.0.2 and therefore provides both `java` and `javac`; no system JDK is required. OpenBabel is deliberately absent. `python install_modules.py` reports the resolved Java/Javac paths and versions, verifies every scientific JAR hash, and proves the external build directory writable before expensive execution. Java compilation is hash-aware and stored outside the checkout. The default cache is isolated by user/job/process under `SLURM_TMPDIR` or the system temporary directory; `DEMIURGE_JAVA_BUILD_DIR` may select another owned writable directory. `DEMIURGE_JAVA` and `DEMIURGE_JAVAC` may point to explicit tools when needed. Initialization and artifact-validation errors are fatal and retain their original exception.
 
 Input is a CSV containing `MOLECULE_NAME`, `SMILES` and the label column. `--label-column` is one-based and defaults to 3. Invalid molecules are retained as explicit failure metadata; only successful rows enter the final feature CSV.
 
@@ -152,24 +154,31 @@ Batch directories become visible only after their feature, metadata and commit f
 
 ## Scientific validation
 
-The mandatory Phase 0 reference is `screen_SPECTRAprints` commit `5c8537eeb8486b3287f0fe67c451f82f1a1a0dda` and the frozen 12-molecule corpus whose SHA-256 is `fe5803b2da1356e364224e90c0cb0fc543165e4b130b38d59a4b040528b29d3e`.
+The mandatory Phase 0 deployment reference is committed under `validation/frozen_nmr_v2_expected`. Its manifest pins every expected artifact by SHA-256. The artifacts originate from validated `screen_SPECTRAprints` commit `5c8537eeb8486b3287f0fe67c451f82f1a1a0dda`; the 12-molecule corpus SHA-256 is `fe5803b2da1356e364224e90c0cb0fc543165e4b130b38d59a4b040528b29d3e`. Normal validation verifies this inventory and never regenerates it.
 
 The gate is zero-tolerance and fail-closed. It compares canonical identities, preparation success/failure, exact V3000 MOL bytes, indexed raw 1H/13C CSV bytes, per-molecule native-3D/rebuilt-3D/2D status, both 200-bin vectors and H|C. Full-run comparison additionally requires identical final rows, ECFP4/total composition, failures, canonical metadata and retained scientific artifacts.
 
+Standalone validation:
+
 ```bash
-python demiurge_nmr_v2_gate.py emit --implementation screen \
-  --screen-root /path/to/screen_SPECTRAprints \
+python install_modules.py
+python demiurge_nmr_v2_gate.py validate-standalone \
+  --reference-root validation/frozen_nmr_v2_expected \
   --corpus validation/nmr_v2_parity_corpus.jsonl \
-  --output-root validation/results/screen
-python demiurge_nmr_v2_gate.py emit --implementation demiurge \
-  --corpus validation/nmr_v2_parity_corpus.jsonl \
-  --output-root validation/results/demiurge
-python demiurge_nmr_v2_gate.py compare \
-  --screen-output validation/results/screen \
-  --demiurge-output validation/results/demiurge
+  --output-root validation/results/demiurge_candidate \
+  --java-threads 2 --java-heap 4G --java-lifecycle persistent
 ```
 
-Backend and lifecycle equivalence is tested with `compare-runs` after retaining scientific artifacts. A production recommendation is permitted only for an exact/QC-clean run.
+The supplied DGX SBATCH additionally executes `total` in per-batch and persistent modes, compares both runs exactly, and compares each against the frozen H|C|ECFP4 result. Backend and lifecycle equivalence is tested with `compare-runs` after retaining scientific artifacts. Cross-repository emission remains available only as an optional development check when the historical checkout is present. A production recommendation is permitted only for an exact/QC-clean run.
+
+```bash
+mkdir -p /raid/homes/$USER/demiurge_validation/logs /raid/homes/$USER/demiurge_validation/runs
+sbatch \
+  --output=/raid/homes/$USER/demiurge_validation/logs/nmr_v2_%j.out \
+  --error=/raid/homes/$USER/demiurge_validation/logs/nmr_v2_%j.err \
+  --export=ALL,DEMIURGE_PROJECT_ROOT=/raid/homes/$USER/Demiurge,DEMIURGE_VALIDATION_ROOT=/raid/homes/$USER/demiurge_validation/runs,DEMIURGE_SCRATCH_ROOT=/nvme/scratch/$USER/demiurge_validation \
+  /raid/homes/$USER/Demiurge/benchmarks/demiurge_nmr_v2_validation.sbatch
+```
 
 ## Migration and optimization history
 
@@ -190,8 +199,8 @@ The validated screen pipeline supplied the persistent/thread-local design eviden
 
 ## Current status
 
-- **READY locally:** scientific core, local CLI, checkpoint/resume, diagnostics and exact cross-repository parity.
-- **READY for controlled DGX validation:** SLURM backend, staging, retry/status and validation SBATCH are implemented without executing a cluster job from this repository task.
+- **READY locally:** standalone scientific core, local CLI, checkpoint/resume, diagnostics and hash-pinned exact self-validation.
+- **READY for controlled DGX validation:** the standalone SLURM gate, staging, retry/status and pinned Conda JDK are implemented without executing a cluster job from this repository task.
 - **PENDING before production-scale use:** run the supplied DGX parity/lifecycle gate on a representative labeled dataset, review QC/failures and record measured resource/performance results.
 
 ## Citation and license

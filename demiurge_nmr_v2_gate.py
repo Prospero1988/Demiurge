@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zero-tolerance cross-repository SPECTRAPRINTS_NMR_V2 parity gate."""
+"""Zero-tolerance standalone and optional cross-repository NMR V2 gates."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from demiurge_bin.run_state import atomic_write_json, file_sha256
 
 
 BRANCH_FILE = ".spectraprints_unified_profile_branches.jsonl"
+FROZEN_MANIFEST = "reference_manifest.json"
 
 
 def _load_corpus(path: Path) -> list[dict[str, str]]:
@@ -214,7 +215,10 @@ def _compare_tree(left: Path, right: Path, label: str, pattern: str = "*") -> No
 
 
 def compare(args: argparse.Namespace) -> int:
-    left = args.screen_output.expanduser().resolve()
+    selected = getattr(args, "reference_output", None) or getattr(args, "screen_output", None)
+    if selected is None:
+        raise ValueError("A reference output directory is required")
+    left = selected.expanduser().resolve()
     right = args.demiurge_output.expanduser().resolve()
     for name in ("canonical_identity.json", "preparation_failures.json", "nmr_vectors.json", "prediction_failures.json"):
         left_value = json.loads((left / name).read_text(encoding="utf-8"))
@@ -229,6 +233,64 @@ def compare(args: argparse.Namespace) -> int:
         right_branch = right / nucleus / BRANCH_FILE
         _compare_file(left_branch, right_branch, f"{nucleus} 3D branch status")
     print("PASS exact SPECTRAPRINTS_NMR_V2 parity")
+    return 0
+
+
+def verify_frozen_reference(reference_root: Path, corpus: Path | None = None) -> dict[str, Any]:
+    """Verify the pinned fixture inventory; never generate or repair it."""
+    root = reference_root.expanduser().resolve()
+    manifest_path = root / FROZEN_MANIFEST
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Frozen reference manifest is missing: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema_version") != 1:
+        raise RuntimeError("Unsupported frozen reference manifest schema")
+    if manifest.get("contract") != "SPECTRAPRINTS_NMR_V2":
+        raise RuntimeError("Frozen reference scientific contract is not SPECTRAPRINTS_NMR_V2")
+    inventory = manifest.get("files_sha256")
+    if not isinstance(inventory, dict) or not inventory:
+        raise RuntimeError("Frozen reference manifest has no pinned file inventory")
+    actual_files = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.name != FROZEN_MANIFEST
+    }
+    expected_files = set(inventory)
+    if actual_files != expected_files:
+        raise RuntimeError(
+            f"Frozen reference file set mismatch: missing={sorted(expected_files - actual_files)} "
+            f"unexpected={sorted(actual_files - expected_files)}"
+        )
+    for relative, expected in sorted(inventory.items()):
+        actual = file_sha256(root / relative)
+        if actual != expected:
+            raise RuntimeError(
+                f"Frozen reference hash mismatch for {relative}: expected={expected} actual={actual}"
+            )
+    if corpus is not None:
+        actual_corpus = file_sha256(corpus.expanduser().resolve())
+        if actual_corpus != manifest.get("corpus_sha256"):
+            raise RuntimeError(
+                f"Parity corpus hash mismatch: expected={manifest.get('corpus_sha256')} actual={actual_corpus}"
+            )
+    return manifest
+
+
+def validate_standalone(args: argparse.Namespace) -> int:
+    root = args.reference_root.expanduser().resolve()
+    verify_frozen_reference(root, args.corpus)
+    emit_args = argparse.Namespace(
+        implementation="demiurge",
+        screen_root=None,
+        corpus=args.corpus,
+        output_root=args.output_root,
+        java_threads=args.java_threads,
+        java_heap=args.java_heap,
+        java_lifecycle=args.java_lifecycle,
+    )
+    emit(emit_args)
+    compare(argparse.Namespace(reference_output=root / "nmr", demiurge_output=args.output_root))
+    print("PASS hash-pinned standalone SPECTRAPRINTS_NMR_V2 gate")
     return 0
 
 
@@ -292,6 +354,42 @@ def compare_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def compare_frozen_run(args: argparse.Namespace) -> int:
+    reference_root = args.reference_root.expanduser().resolve()
+    manifest = verify_frozen_reference(reference_root)
+    expected = reference_root / "total"
+    candidate = args.candidate_output.expanduser().resolve()
+    summary = json.loads((candidate / "summary.json").read_text(encoding="utf-8"))
+    if summary.get("contract_id") != "DEMIURGE_TOTAL_NMR_V2_H_C_ECFP4":
+        raise RuntimeError("Candidate run does not use the frozen total NMR V2 contract")
+    if summary.get("input_identity", {}).get("sha256") != manifest.get("total_input_sha256"):
+        raise RuntimeError("Candidate run input differs from the frozen total validation input")
+    expected_counts = manifest.get("total_expected_counts") or {}
+    for key in ("total", "successful", "failed"):
+        if summary.get(key) != expected_counts.get(key):
+            raise RuntimeError(f"Candidate run scientific count differs from frozen reference: {key}")
+    _compare_file(expected / "final_features.csv", Path(summary["final_output"]), "frozen total H|C|ECFP4 rows")
+    _compare_file(expected / "failures.jsonl", candidate / "failures.jsonl", "frozen failure identities/reasons")
+    expected_batches = expected / "batches"
+    for path in sorted(expected_batches.rglob("*")):
+        if path.is_file():
+            relative = path.relative_to(expected_batches)
+            _compare_file(path, candidate / "batches" / relative, f"frozen total artifact/{relative}")
+    candidate_files = {
+        path.relative_to(candidate / "batches").as_posix()
+        for path in (candidate / "batches").rglob("*")
+        if path.is_file() and path.name != "commit.json"
+    }
+    expected_files = {
+        path.relative_to(expected_batches).as_posix()
+        for path in expected_batches.rglob("*") if path.is_file()
+    }
+    if candidate_files != expected_files:
+        raise RuntimeError("Candidate retained scientific/batch file set differs from frozen total reference")
+    print("PASS exact frozen total H|C|ECFP4 parity")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -304,11 +402,26 @@ def build_parser() -> argparse.ArgumentParser:
     emit_parser.add_argument("--java-heap", default="4G")
     emit_parser.add_argument("--java-lifecycle", choices=("per-batch", "persistent"), default="persistent")
     compare_parser = commands.add_parser("compare")
-    compare_parser.add_argument("--screen-output", type=Path, required=True)
+    reference_group = compare_parser.add_mutually_exclusive_group(required=True)
+    reference_group.add_argument("--reference-output", type=Path)
+    reference_group.add_argument("--screen-output", type=Path, help=argparse.SUPPRESS)
     compare_parser.add_argument("--demiurge-output", type=Path, required=True)
     run_parser = commands.add_parser("compare-runs")
     run_parser.add_argument("--left-output", type=Path, required=True)
     run_parser.add_argument("--right-output", type=Path, required=True)
+    verify_parser = commands.add_parser("verify-reference")
+    verify_parser.add_argument("--reference-root", type=Path, required=True)
+    verify_parser.add_argument("--corpus", type=Path)
+    standalone_parser = commands.add_parser("validate-standalone")
+    standalone_parser.add_argument("--reference-root", type=Path, required=True)
+    standalone_parser.add_argument("--corpus", type=Path, required=True)
+    standalone_parser.add_argument("--output-root", type=Path, required=True)
+    standalone_parser.add_argument("--java-threads", type=int, default=2)
+    standalone_parser.add_argument("--java-heap", default="4G")
+    standalone_parser.add_argument("--java-lifecycle", choices=("per-batch", "persistent"), default="persistent")
+    frozen_run = commands.add_parser("compare-frozen-run")
+    frozen_run.add_argument("--reference-root", type=Path, required=True)
+    frozen_run.add_argument("--candidate-output", type=Path, required=True)
     return parser
 
 
@@ -320,7 +433,17 @@ def main() -> int:
         return emit(args)
     if args.command == "compare":
         return compare(args)
-    return compare_runs(args)
+    if args.command == "compare-runs":
+        return compare_runs(args)
+    if args.command == "verify-reference":
+        verify_frozen_reference(args.reference_root, args.corpus)
+        print("PASS frozen NMR V2 reference hashes")
+        return 0
+    if args.command == "validate-standalone":
+        if args.java_threads <= 0:
+            raise ValueError("java_threads must be positive")
+        return validate_standalone(args)
+    return compare_frozen_run(args)
 
 
 if __name__ == "__main__":

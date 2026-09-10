@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -13,7 +14,8 @@ from demiurge_bin import bucketing, contracts, preparation
 from demiurge_bin.pipeline import _create_ecfp_generator, _ecfp
 
 
-SCREEN_ROOT = Path("D:/Git/screen_SPECTRAprints")
+_SCREEN_ROOT_VALUE = os.environ.get("DEMIURGE_SCREEN_REFERENCE_ROOT", "").strip()
+SCREEN_ROOT = Path(_SCREEN_ROOT_VALUE) if _SCREEN_ROOT_VALUE else None
 
 
 class ScientificContractTests(unittest.TestCase):
@@ -45,8 +47,12 @@ class ScientificContractTests(unittest.TestCase):
         actual = contracts.verify_predictor_artifacts(Path.cwd())
         self.assertEqual(actual, contracts.PREDICTOR_ARTIFACT_SHA256)
 
-    @unittest.skipUnless((SCREEN_ROOT / "engine/training_contract.py").is_file(), "screen reference checkout unavailable")
+    @unittest.skipUnless(
+        SCREEN_ROOT is not None and (SCREEN_ROOT / "engine/training_contract.py").is_file(),
+        "optional screen reference checkout not configured",
+    )
     def test_preparation_is_byte_exact_with_screen_reference(self):
+        assert SCREEN_ROOT is not None
         spec = importlib.util.spec_from_file_location(
             "screen_training_contract_reference",
             SCREEN_ROOT / "engine" / "training_contract.py",

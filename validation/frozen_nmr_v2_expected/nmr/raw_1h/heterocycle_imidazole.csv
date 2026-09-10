@@ -1,0 +1,5 @@
+mol_atom_index,element,parent_atom_index,shift
+6,H,1,8.31
+7,H,2,6.88
+8,H,3,10.86
+9,H,4,8.26

@@ -1,7 +1,7 @@
 # Project invariants
 
 - `SPECTRAPRINTS_NMR_V2` is the active production NMR representation. Do not reintroduce ETKDG, CoordGen or OpenBabel into the active path.
-- The exact scientific reference is the validated implementation in `screen_SPECTRAprints`. Any preparation, MOL-byte, raw-spectrum or bucket change requires the cross-repository zero-tolerance parity gate.
+- The mandatory deployment reference is the hash-pinned frozen NMR V2 fixture in `validation/frozen_nmr_v2_expected`; normal validation must remain standalone. `screen_SPECTRAprints` is the historical source and an optional development-only cross-repository gate when both checkouts are available.
 - Feature orders are frozen: 1H=200; 13C=200; hybrid=H|C=400; FP=ECFP4 2048; total=H|C|ECFP4=2448.
 - Operational settings (backend, paths, staging, batching, worker counts, Java thread count/heap/lifecycle) must not enter scientific identity or alter output.
 - Local and SLURM execution must call the same scientific core. Do not duplicate scientific logic in orchestration.

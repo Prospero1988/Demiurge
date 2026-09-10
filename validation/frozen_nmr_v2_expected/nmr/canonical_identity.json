@@ -1,0 +1,14 @@
+{
+  "aromatic_benzene": "c1ccccc1",
+  "charged_tetramethylammonium": "C[N+](C)(C)C",
+  "constrained_adamantane": "C1C2CC3CC1CC(C2)C3",
+  "ez_cis_difluoroethene": "F/C=C\\F",
+  "ez_trans_difluoroethene": "F/C=C/F",
+  "flexible_octanol": "CCCCCCCCO",
+  "fused_naphthalene": "c1ccc2ccccc2c1",
+  "heterocycle_imidazole": "c1c[nH]cn1",
+  "multiple_rings_bicyclohexyl": "C1CCC(C2CCCCC2)CC1",
+  "ordinary_ethanol": "CCO",
+  "tetrahedral_l_alanine": "C[C@H](N)C(=O)O",
+  "zwitterion_glycine": "[NH3+]CC(=O)[O-]"
+}
