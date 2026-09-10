@@ -58,6 +58,8 @@ run_manifest.json
 *.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-journal
+*.sqlite3-journal
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite3-wal

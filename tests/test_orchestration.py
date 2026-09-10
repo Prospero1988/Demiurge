@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,6 +35,10 @@ class OrchestrationTests(unittest.TestCase):
             job_name_prefix="DEMIURGE test", conda_root="/raid/soft/miniconda",
             conda_env="demiurge", no_staging=False,
             retain_scientific_artifacts=False, dry_run=True,
+            input_format="csv", input_table=None, input_query=None,
+            id_column="MOLECULE_NAME", smiles_column="SMILES",
+            output_format="csv", output_table="demiurge_features",
+            metadata_table="demiurge_metadata",
         )
 
     def create_inputs(self, root: Path):
@@ -52,6 +58,8 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(len(manifest["submissions"]), MAX_ATTEMPTS)
             self.assertTrue((path.parent / "logs").is_dir())
             self.assertEqual(manifest["submissions"][1]["dependency"], "DRYRUN1")
+            self.assertEqual(manifest["io"]["input_format"], "csv")
+            self.assertEqual(manifest["io"]["output_format"], "csv")
             _, loaded = load_manifest(path)
             self.assertEqual(loaded["max_attempts"], 3)
 
@@ -130,6 +138,32 @@ class OrchestrationTests(unittest.TestCase):
         self.assertNotIn("--wrap", text)
         self.assertIn("python demiurge.py", text)
         self.assertIn('DEMIURGE_JAVA_BUILD_DIR="${STAGING_DIRECTORY}/java_build"', text)
+        self.assertIn('--input-format "${INPUT_FORMAT}"', text)
+        self.assertIn('--output-format "${OUTPUT_FORMAT}"', text)
+
+    def test_sqlite_manifest_uses_one_output_database_per_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = root / "inputs"
+            inputs.mkdir()
+            for name in ("b.db", "a.db"):
+                with closing(sqlite3.connect(inputs / name)) as connection:
+                    connection.execute("CREATE TABLE compounds(cid TEXT, smiles TEXT, activity)")
+                    connection.execute("INSERT INTO compounds VALUES ('x','CCO',1.0)")
+                    connection.commit()
+            args = self.args(root)
+            args.pattern = "*.db"
+            args.input_format = "sqlite"
+            args.input_table = "compounds"
+            args.id_column = "cid"
+            args.smiles_column = "smiles"
+            args.label_column = "activity"
+            args.output_format = "sqlite"
+            path, manifest = prepare_manifest(args)
+            self.assertEqual([Path(task["input_path"]).name for task in manifest["tasks"]], ["a.db", "b.db"])
+            self.assertEqual(manifest["io"]["output_format"], "sqlite")
+            self.assertNotEqual(manifest["tasks"][0]["output_root"], manifest["tasks"][1]["output_root"])
+            self.assertTrue(path.is_file())
 
 
 if __name__ == "__main__":

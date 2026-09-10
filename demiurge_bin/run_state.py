@@ -73,9 +73,10 @@ def initial_checkpoint(
     input_info: dict[str, Any],
     scientific_config: dict[str, Any],
     total_rows: int,
+    io_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = utc_now()
-    return {
+    checkpoint = {
         "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
         "run_id": run_id,
         "status": "INITIALIZED",
@@ -93,6 +94,9 @@ def initial_checkpoint(
         "failure_type": None,
         "failure_message": None,
     }
+    if io_config is not None:
+        checkpoint["io_config"] = io_config
+    return checkpoint
 
 
 def validate_resume(
@@ -100,6 +104,7 @@ def validate_resume(
     *,
     input_info: dict[str, Any],
     scientific_config: dict[str, Any],
+    io_config: dict[str, Any] | None = None,
 ) -> None:
     if int(checkpoint.get("checkpoint_schema_version", -1)) != CHECKPOINT_SCHEMA_VERSION:
         raise RuntimeError("Checkpoint schema is incompatible")
@@ -107,6 +112,8 @@ def validate_resume(
         raise RuntimeError("Input content identity differs from checkpoint")
     if checkpoint.get("scientific_config") != scientific_config:
         raise RuntimeError("Scientific configuration differs from checkpoint")
+    if io_config is not None and checkpoint.get("io_config") not in (None, io_config):
+        raise RuntimeError("Input/output configuration differs from checkpoint")
     if checkpoint.get("status") == "DONE":
         raise RuntimeError("Run is already DONE")
 

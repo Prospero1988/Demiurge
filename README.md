@@ -42,7 +42,7 @@ The NMR V2 representation is intentionally incompatible with models trained on t
 demiurge.py / demiurge_supervisor.py
                  │
                  ▼
-          input records and labels
+        InputReader (CSV / SQLite)
                  │
                  ▼
        demiurge_bin/pipeline.py
@@ -53,7 +53,7 @@ demiurge.py / demiurge_supervisor.py
           └─ run_state.py / atomic batches
                  │
                  ▼
-      CSV feature matrix + durable state
+   OutputWriter (CSV / SQLite) + durable state
 ```
 
 `demiurge.py` provides direct `run`, `resume`, and `status` commands. `demiurge_supervisor.py` adds only campaign discovery, SLURM arrays, staging, bounded retries, and campaign status. `orchestration/slurm_worker.sh` calls the same `demiurge.py` pipeline; orchestration contains no duplicate scientific implementation.
@@ -80,11 +80,13 @@ The required predictor resources live in `predictor/`: `predictorh.jar`, `predic
 
 OpenBabel is not a production dependency.
 
-## Input CSV
+## Input formats
 
 CSV input must contain exact columns `MOLECULE_NAME` and `SMILES`. The delimiter is detected automatically. `--label-column` is a one-based column position and defaults to 3; its values are copied unchanged to the output `LABEL` column and do not influence feature calculation. Blank identifiers, SMILES, or labels become explicit `INPUT_QC` failures.
 
 `input_example.csv` is a small semicolon-delimited example.
+
+For generic CSV or SQLite sources, `--id-column`, `--smiles-column`, and `--label-column` accept explicit column names; numeric `--label-column` values retain the historical one-based CSV behavior. SQLite requires exactly one of `--input-table` or `--input-query`. Query mode accepts one read-only `SELECT`/`WITH` statement and the selected columns must expose the configured names. Records are streamed in bounded batches; SQLite rows are ordered by the configured identifier column so checkpoint positions are repeatable. Input databases must be immutable during a run. A non-empty `-wal`, `-shm`, or `-journal` sidecar is rejected until the database has been checkpointed.
 
 ## Standalone execution
 
@@ -118,6 +120,43 @@ python demiurge.py status --output-root ./results/example_total
 
 Resume validates input content and scientific configuration exactly. Scratch paths, worker counts, batching, JVM lifecycle, and execution backend are operational settings and do not alter scientific identity.
 
+### Standalone format combinations
+
+Existing CSV → CSV commands remain unchanged. The following examples use the same scientific core and differ only in their I/O adapters.
+
+CSV → SQLite:
+
+```bash
+python demiurge.py run \
+  --input molecules.csv --input-format csv \
+  --id-column MOLECULE_NAME --smiles-column SMILES --label-column 3 \
+  --mode total --output-root ./results/csv_to_db \
+  --output-format sqlite --output-db ./results/csv_to_db/features.db \
+  --output-table demiurge_features --metadata-table demiurge_metadata
+```
+
+SQLite → CSV:
+
+```bash
+python demiurge.py run \
+  --input molecules.db --input-format sqlite --input-table compounds \
+  --id-column compound_id --smiles-column canonical_smiles --label-column activity \
+  --mode total --output-root ./results/db_to_csv --output-format csv
+```
+
+SQLite → SQLite:
+
+```bash
+python demiurge.py run \
+  --input molecules.db --input-format sqlite --input-table compounds \
+  --id-column compound_id --smiles-column canonical_smiles --label-column activity \
+  --mode total --output-root ./results/db_to_db \
+  --output-format sqlite --output-db ./results/db_to_db/features.db \
+  --output-table demiurge_features --metadata-table demiurge_metadata
+```
+
+For query input, replace `--input-table compounds` with, for example, `--input-query 'SELECT compound_id, canonical_smiles, activity FROM compounds WHERE accepted = 1'`. Table and query options are mutually exclusive. SQLite output refuses an existing database by default; `--overwrite-output` explicitly replaces the selected output file. Resume never requires that flag.
+
 ## SLURM production execution
 
 Production defaults in `orchestration/config.toml` are `total`, label column 3, batch size 1000, four preparation workers, two Java threads, 4G Java heap, persistent JVM, six CPUs, 16G RAM, and at most three attempts.
@@ -134,11 +173,26 @@ Submit one or more CSV shards:
   --campaign production_001
 ```
 
+SQLite campaigns use the same supervisor. Each matched input shard receives its own result directory and output database; workers never share an SQLite writer:
+
+```bash
+python demiurge_supervisor.py submit \
+  --project-root /raid/homes/aleniak/Demiurge \
+  --input-dir /raid/homes/aleniak/demiurge_inputs \
+  --pattern '*.db' --input-format sqlite --input-table compounds \
+  --id-column compound_id --smiles-column canonical_smiles --label-column activity \
+  --output-format sqlite --output-table demiurge_features --metadata-table demiurge_metadata \
+  --output-root /raid/homes/aleniak/demiurge_runs \
+  --scratch-root /nvme/scratch/aleniak/demiurge_runs/sqlite_001 \
+  --campaign sqlite_001
+```
+
 Important `submit` options are:
 
-- discovery: `--input-dir`, `--pattern`, `--campaign`;
+- discovery and input: `--input-dir`, `--pattern`, `--input-format`, `--input-table`/`--input-query`, `--id-column`, `--smiles-column`, `--label-column`, `--campaign`;
 - durable/runtime paths: `--output-root`, `--scratch-root`, `--project-root`;
-- science selection: `--mode`, `--label-column`;
+- output: `--output-format`, `--output-table`, `--metadata-table`;
+- science selection: `--mode`;
 - operational tuning: `--batch-size`, `--prep-workers`, `--java-threads`, `--java-heap`, `--java-lifecycle`;
 - scheduler resources: `--cpus-per-task`, `--memory`, `--partition`, `--time`, `--max-concurrent`, `--job-name-prefix`;
 - deployment: `--conda-root`, `--conda-env`, `--no-staging`, `--retain-scientific-artifacts`.
@@ -183,7 +237,34 @@ results/<input-stem>_<input-sha256-prefix>/
   generated_ML_inputs/<input-stem>_<mode>_ML_input.csv
 ```
 
+For SQLite output, the final file is instead `generated_ML_inputs/<input-stem>_<mode>_ML_input.sqlite` unless standalone `--output-db` selects another path.
+
 Only successful molecules enter the final feature matrix. Each batch records all molecule outcomes in `metadata.jsonl`; failures are aggregated into `failures.jsonl`. Atomic batch directories are the resume boundary. The summary stores counts, timings, throughput, the final output path, and its SHA256.
+
+### SQLite output schema
+
+The configurable result table (default `demiurge_features`) contains:
+
+- `source_index`: deterministic zero-based input position and primary key;
+- `molecule_id`, `label`;
+- `status`: `SUCCESS` or `FAILED`;
+- `error_stage`, `error_type`, `error`;
+- `feature_blob`: contiguous little-endian NumPy `float32` (`<f4`) data, or `NULL` for failures;
+- `feature_sha256`: SHA256 of the exact blob, or `NULL` for failures.
+
+The configurable metadata table (default `demiurge_metadata`) is a key/JSON-value table containing schema version, contract ID, representation, feature width, dtype, byte order, component widths, exact offsets, feature order, timestamps, and final row counts. For `total`, every successful blob is exactly `2448 × 4 = 9792` bytes with offsets 1H `[0,200)`, 13C `[200,400)`, and ECFP4 `[400,2448)`.
+
+Reconstruct and validate a total vector:
+
+```python
+import numpy as np
+
+vector = np.frombuffer(feature_blob, dtype="<f4")
+if vector.shape != (2448,):
+    raise ValueError(f"invalid Demiurge total vector: {vector.shape}")
+```
+
+SQLite batches use transactions plus idempotent source-index replay checks. If execution stops after a database transaction but before the filesystem checkpoint, replay must reproduce the exact row or fails closed. SLURM scaling is one input shard → one task result directory → one SQLite database. Consolidation, when needed, is an explicit downstream operation rather than concurrent writes to a shared database.
 
 ## Validation and reproducibility
 

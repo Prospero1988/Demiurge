@@ -20,6 +20,15 @@ def positive_integer(value: str) -> int:
     return parsed
 
 
+def column_selector(value: str) -> int | str:
+    selected = value.strip()
+    if not selected:
+        raise argparse.ArgumentTypeError("column selector must not be empty")
+    if selected.isdecimal():
+        return positive_integer(selected)
+    return selected
+
+
 def add_operational_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--temp-root", type=Path, default=Path(tempfile.gettempdir()) / "demiurge")
     parser.add_argument("--prep-workers", type=positive_integer, default=4)
@@ -34,11 +43,22 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     run = commands.add_parser("run", help="run locally or as a scheduler worker")
-    run.add_argument("--input", type=Path, required=True)
+    run.add_argument("--input", type=Path, required=True, help="CSV or SQLite input path")
+    run.add_argument("--input-format", choices=("csv", "sqlite"), default="csv")
+    sqlite_source = run.add_mutually_exclusive_group()
+    sqlite_source.add_argument("--input-table", help="SQLite table/view; exclusive with --input-query")
+    sqlite_source.add_argument("--input-query", help="read-only SQLite SELECT; exclusive with --input-table")
+    run.add_argument("--id-column", default="MOLECULE_NAME", help="molecule identifier column")
+    run.add_argument("--smiles-column", default="SMILES", help="SMILES column")
     run.add_argument("--canonical-input", type=Path, help=argparse.SUPPRESS)
     run.add_argument("--mode", choices=("1H", "13C", "FP", "hybrid", "total"), required=True)
     run.add_argument("--output-root", type=Path, required=True)
-    run.add_argument("--label-column", type=positive_integer, default=3)
+    run.add_argument("--output-format", choices=("csv", "sqlite"), default="csv", help="primary output format")
+    run.add_argument("--output-db", type=Path, help="SQLite output file; defaults below output-root")
+    run.add_argument("--output-table", default="demiurge_features", help="SQLite result table")
+    run.add_argument("--metadata-table", default="demiurge_metadata", help="SQLite metadata table")
+    run.add_argument("--overwrite-output", action="store_true", help="replace an existing SQLite output file")
+    run.add_argument("--label-column", type=column_selector, default=3, help="one-based position or column name")
     run.add_argument("--max-attempts", type=positive_integer, default=3)
     run.add_argument("--retain-scientific-artifacts", action="store_true")
     run.add_argument("--backend", choices=("local", "slurm-worker"), default="local", help=argparse.SUPPRESS)
@@ -114,6 +134,16 @@ def main(argv: list[str] | None = None) -> int:
             retain_scientific_artifacts=args.retain_scientific_artifacts,
             backend=args.backend,
             canonical_input_path=args.canonical_input,
+            input_format=args.input_format,
+            input_table=args.input_table,
+            input_query=args.input_query,
+            id_column=args.id_column,
+            smiles_column=args.smiles_column,
+            output_format=args.output_format,
+            output_db=args.output_db,
+            output_table=args.output_table,
+            metadata_table=args.metadata_table,
+            overwrite_output=args.overwrite_output,
         ))
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

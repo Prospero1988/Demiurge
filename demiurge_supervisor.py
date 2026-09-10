@@ -13,9 +13,8 @@ import tomllib
 from pathlib import Path
 from typing import Any, Callable
 
-import pandas as pd
-
 from demiurge_bin.contracts import object_sha256, scientific_contract, verify_predictor_artifacts
+from demiurge_bin.io import create_input_reader
 from demiurge_bin.java_heap import normalize_java_heap
 from demiurge_bin.run_state import atomic_write_json, atomic_write_text, input_identity, read_json, utc_now
 
@@ -29,6 +28,15 @@ def positive_integer(value: str) -> int:
     if parsed <= 0:
         raise argparse.ArgumentTypeError("value must be positive")
     return parsed
+
+
+def column_selector(value: str) -> int | str:
+    selected = value.strip()
+    if not selected:
+        raise argparse.ArgumentTypeError("column selector must not be empty")
+    if selected.isdecimal():
+        return positive_integer(selected)
+    return selected
 
 
 def load_defaults(project_root: Path) -> dict[str, Any]:
@@ -65,10 +73,6 @@ def load_manifest(path: Path) -> tuple[Path, dict[str, Any]]:
     return selected, document
 
 
-def _row_count(path: Path) -> int:
-    return int(len(pd.read_csv(path, usecols=[0])))
-
-
 def prepare_manifest(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     project_root = args.project_root.expanduser().resolve()
     if not (project_root / "demiurge.py").is_file():
@@ -86,16 +90,45 @@ def prepare_manifest(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     if manifest_path.exists():
         raise RuntimeError(f"Campaign manifest already exists: {manifest_path}")
     mode = args.mode or worker["mode"]
+    selected_label = getattr(args, "label_column", None)
+    label_column = selected_label if selected_label is not None else worker["label_column"]
+    input_format = getattr(args, "input_format", "csv")
+    input_table = getattr(args, "input_table", None)
+    input_query = getattr(args, "input_query", None)
+    id_column = getattr(args, "id_column", "MOLECULE_NAME")
+    smiles_column = getattr(args, "smiles_column", "SMILES")
+    output_format = getattr(args, "output_format", "csv")
+    output_table = getattr(args, "output_table", "demiurge_features")
+    metadata_table = getattr(args, "metadata_table", "demiurge_metadata")
+    io_config = {
+        "input_format": input_format,
+        "input_table": input_table,
+        "input_query": input_query,
+        "id_column": id_column,
+        "smiles_column": smiles_column,
+        "output_format": output_format,
+        "output_table": output_table,
+        "metadata_table": metadata_table,
+    }
     contract = scientific_contract(mode)
     tasks = []
     for index, path in enumerate(inputs):
         digest = input_identity(path)
         output = campaign_root / "results" / f"{path.stem}_{digest['sha256'][:12]}"
+        description = create_input_reader(
+            path,
+            input_format=input_format,
+            input_table=input_table,
+            input_query=input_query,
+            id_column=id_column,
+            smiles_column=smiles_column,
+            label_column=label_column,
+        ).describe()
         tasks.append({
             "task_index": index,
             "input_path": str(path),
             "input_identity": digest,
-            "expected_rows": _row_count(path),
+            "expected_rows": description.total_rows,
             "output_root": str(output),
         })
     document = {
@@ -110,11 +143,12 @@ def prepare_manifest(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "max_attempts": MAX_ATTEMPTS,
         "scientific": {
             "mode": mode,
-            "label_column": int(args.label_column or worker["label_column"]),
+            "label_column": label_column,
             "contract": contract,
             "contract_sha256": object_sha256(contract),
             "predictor_artifact_sha256": verify_predictor_artifacts(project_root) if mode != "FP" else {},
         },
+        "io": io_config,
         "resources": {
             "batch_size": int(args.batch_size or worker["batch_size"]),
             "prep_workers": int(args.prep_workers or worker["prep_workers"]),
@@ -370,6 +404,14 @@ def emit_row(manifest: dict[str, Any], task_index: int) -> None:
         manifest["max_attempts"], slurm["conda_root"], slurm["conda_env"],
         1 if slurm["staging_enabled"] else 0, manifest["campaign"],
         1 if resources["retain_scientific_artifacts"] else 0, manifest["project_root"],
+        manifest.get("io", {}).get("input_format", "csv"),
+        manifest.get("io", {}).get("input_table") or "",
+        manifest.get("io", {}).get("input_query") or "",
+        manifest.get("io", {}).get("id_column", "MOLECULE_NAME"),
+        manifest.get("io", {}).get("smiles_column", "SMILES"),
+        manifest.get("io", {}).get("output_format", "csv"),
+        manifest.get("io", {}).get("output_table", "demiurge_features"),
+        manifest.get("io", {}).get("metadata_table", "demiurge_metadata"),
     ]
     sys.stdout.buffer.write(b"\0".join(str(value).encode("utf-8") for value in fields) + b"\0")
 
@@ -377,35 +419,44 @@ def emit_row(manifest: dict[str, Any], task_index: int) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    submit = commands.add_parser("submit")
-    submit.add_argument("--project-root", type=Path, required=True)
-    submit.add_argument("--input-dir", type=Path, required=True)
-    submit.add_argument("--pattern", default="*.csv")
-    submit.add_argument("--output-root", type=Path, required=True)
-    submit.add_argument("--scratch-root", type=Path, required=True)
-    submit.add_argument("--campaign", required=True)
-    submit.add_argument("--mode", choices=("1H", "13C", "FP", "hybrid", "total"))
-    submit.add_argument("--label-column", type=positive_integer)
-    submit.add_argument("--batch-size", type=positive_integer)
-    submit.add_argument("--prep-workers", type=positive_integer)
-    submit.add_argument("--java-threads", type=positive_integer)
-    submit.add_argument("--java-heap")
-    submit.add_argument("--java-lifecycle", choices=("persistent", "per-batch"))
-    submit.add_argument("--cpus-per-task", type=positive_integer)
-    submit.add_argument("--memory")
-    submit.add_argument("--partition")
-    submit.add_argument("--time")
-    submit.add_argument("--max-concurrent", type=positive_integer)
-    submit.add_argument("--job-name-prefix")
-    submit.add_argument("--conda-root")
-    submit.add_argument("--conda-env")
-    submit.add_argument("--no-staging", action="store_true")
-    submit.add_argument("--retain-scientific-artifacts", action="store_true")
-    submit.add_argument("--dry-run", action="store_true")
-    resume = commands.add_parser("resume")
+    submit = commands.add_parser("submit", help="create a manifest and submit a bounded SLURM retry chain")
+    submit.add_argument("--project-root", type=Path, required=True, help="deployed Demiurge source root")
+    submit.add_argument("--input-dir", type=Path, required=True, help="directory containing input shards")
+    submit.add_argument("--pattern", default="*.csv", help="input filename glob (default: *.csv)")
+    submit.add_argument("--input-format", choices=("csv", "sqlite"), default="csv", help="shard format")
+    sqlite_source = submit.add_mutually_exclusive_group()
+    sqlite_source.add_argument("--input-table", help="SQLite table/view; exclusive with --input-query")
+    sqlite_source.add_argument("--input-query", help="read-only SQLite SELECT; exclusive with --input-table")
+    submit.add_argument("--id-column", default="MOLECULE_NAME", help="molecule identifier column")
+    submit.add_argument("--smiles-column", default="SMILES", help="SMILES column")
+    submit.add_argument("--output-format", choices=("csv", "sqlite"), default="csv", help="one output per shard")
+    submit.add_argument("--output-table", default="demiurge_features", help="SQLite result table")
+    submit.add_argument("--metadata-table", default="demiurge_metadata", help="SQLite metadata table")
+    submit.add_argument("--output-root", type=Path, required=True, help="durable campaign parent")
+    submit.add_argument("--scratch-root", type=Path, required=True, help="compute-node staging/scratch parent")
+    submit.add_argument("--campaign", required=True, help="new campaign directory name")
+    submit.add_argument("--mode", choices=("1H", "13C", "FP", "hybrid", "total"), help="feature mode")
+    submit.add_argument("--label-column", type=column_selector, help="one-based position or column name")
+    submit.add_argument("--batch-size", type=positive_integer, help="molecules per atomic batch")
+    submit.add_argument("--prep-workers", type=positive_integer, help="parallel preparation processes")
+    submit.add_argument("--java-threads", type=positive_integer, help="predictor threads per nucleus")
+    submit.add_argument("--java-heap", help="Java maximum heap, for example 4G")
+    submit.add_argument("--java-lifecycle", choices=("persistent", "per-batch"), help="predictor lifecycle")
+    submit.add_argument("--cpus-per-task", type=positive_integer, help="SLURM CPUs per worker")
+    submit.add_argument("--memory", help="SLURM memory per worker")
+    submit.add_argument("--partition", help="SLURM partition")
+    submit.add_argument("--time", help="SLURM wall-time limit")
+    submit.add_argument("--max-concurrent", type=positive_integer, help="array concurrency cap")
+    submit.add_argument("--job-name-prefix", help="sanitized SLURM job-name prefix")
+    submit.add_argument("--conda-root", help="Conda installation root")
+    submit.add_argument("--conda-env", help="Conda environment name")
+    submit.add_argument("--no-staging", action="store_true", help="read directly instead of staging to scratch")
+    submit.add_argument("--retain-scientific-artifacts", action="store_true", help="retain MOL and raw NMR files")
+    submit.add_argument("--dry-run", action="store_true", help="write manifest and commands without sbatch")
+    resume = commands.add_parser("resume", help="submit remaining compatible shards")
     resume.add_argument("--manifest", type=Path, required=True)
     resume.add_argument("--dry-run", action="store_true")
-    status = commands.add_parser("status")
+    status = commands.add_parser("status", help="read durable campaign progress")
     status.add_argument("--manifest", type=Path, required=True)
     row = commands.add_parser("row")
     row.add_argument("--manifest", type=Path, required=True)

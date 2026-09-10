@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import multiprocessing
@@ -10,13 +9,11 @@ import os
 import shutil
 import signal
 import time
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
-import pandas as pd
-
 from . import predictor
 from .bucketing import (
     bucket_shifts,
@@ -40,11 +37,12 @@ from .contracts import (
     verify_predictor_artifacts,
 )
 from .io_utils import cleanup_owned_scratch, create_owned_scratch
+from .io import create_input_reader, create_output_writer
+from .io.base import ColumnSelector
 from .java_heap import DEFAULT_JAVA_HEAP, normalize_java_heap
 from .preparation import PreparationResult, _worker_init, prepare_batch
 from .run_state import (
     atomic_write_json,
-    atomic_write_text,
     file_sha256,
     initial_checkpoint,
     input_identity,
@@ -64,7 +62,7 @@ class RunConfig:
     mode: str
     output_root: Path
     temp_root: Path
-    label_column: int = 3
+    label_column: ColumnSelector = 3
     prep_workers: int = 4
     java_threads: int = 2
     java_heap: str = DEFAULT_JAVA_HEAP
@@ -75,23 +73,44 @@ class RunConfig:
     backend: str = "local"
     resume: bool = False
     canonical_input_path: Path | None = None
+    input_format: str = "csv"
+    input_table: str | None = None
+    input_query: str | None = None
+    id_column: str = "MOLECULE_NAME"
+    smiles_column: str = "SMILES"
+    output_format: str = "csv"
+    output_db: Path | None = None
+    output_table: str = "demiurge_features"
+    metadata_table: str = "demiurge_metadata"
+    overwrite_output: bool = False
 
     def validated(self) -> "RunConfig":
         mode_aliases = {"1h": "1H", "13c": "13C", "fp": "FP", "hybrid": "hybrid", "total": "total"}
         mode = mode_aliases.get(str(self.mode).lower())
         if mode is None:
             raise ValueError("mode must be one of 1H, 13C, FP, hybrid or total")
-        for name in ("label_column", "prep_workers", "java_threads", "batch_size", "max_attempts"):
+        for name in ("prep_workers", "java_threads", "batch_size", "max_attempts"):
             value = getattr(self, name)
             if isinstance(value, bool) or int(value) <= 0:
                 raise ValueError(f"{name} must be a positive integer")
+        if isinstance(self.label_column, int) and self.label_column <= 0:
+            raise ValueError("label_column position must be positive")
+        if not isinstance(self.label_column, (int, str)) or str(self.label_column).strip() == "":
+            raise ValueError("label_column must be a one-based position or column name")
         if self.java_lifecycle not in {"per-batch", "persistent"}:
             raise ValueError("java_lifecycle must be per-batch or persistent")
         if self.backend not in {"local", "slurm-worker"}:
             raise ValueError("backend must be local or slurm-worker")
+        if self.input_format not in {"csv", "sqlite"}:
+            raise ValueError("input_format must be csv or sqlite")
+        if self.output_format not in {"csv", "sqlite"}:
+            raise ValueError("output_format must be csv or sqlite")
         input_path = self.input_path.expanduser().resolve()
         if not input_path.is_file():
-            raise FileNotFoundError(f"Input CSV does not exist: {input_path}")
+            raise FileNotFoundError(f"Input file does not exist: {input_path}")
+        output_db = self.output_db.expanduser().resolve() if self.output_db is not None else None
+        if output_db is not None and output_db == input_path:
+            raise ValueError("SQLite output_db must not be the input database")
         return replace(
             self,
             input_path=input_path,
@@ -104,6 +123,7 @@ class RunConfig:
                 if self.canonical_input_path is not None
                 else input_path
             ),
+            output_db=output_db,
         )
 
 
@@ -115,38 +135,6 @@ def install_signal_handlers() -> None:
 
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
-
-
-def _load_records(path: Path, label_column: int) -> tuple[list[dict[str, Any]], str]:
-    frame = pd.read_csv(path, sep=None, engine="python")
-    missing = {"MOLECULE_NAME", "SMILES"} - set(frame.columns)
-    if missing:
-        raise ValueError(f"Input CSV is missing columns: {sorted(missing)}")
-    index = int(label_column) - 1
-    if index < 0 or index >= len(frame.columns):
-        raise ValueError(f"label_column={label_column} is outside the input CSV")
-    label_name = str(frame.columns[index])
-    records: list[dict[str, Any]] = []
-    for source_index, row in frame.iterrows():
-        name = row.get("MOLECULE_NAME")
-        smiles = row.get("SMILES")
-        label = row.iloc[index]
-        input_error = None
-        if pd.isna(name) or str(name).strip() == "":
-            input_error = "Missing MOLECULE_NAME"
-        elif pd.isna(smiles) or str(smiles).strip() == "":
-            input_error = "Missing SMILES"
-        elif pd.isna(label):
-            input_error = f"Missing label in {label_name}"
-        records.append({
-            "source_index": int(source_index),
-            "internal_id": f"m{len(records):08d}",
-            "molecule_name": "" if pd.isna(name) else str(name),
-            "smiles": "" if pd.isna(smiles) else str(smiles),
-            "label": None if pd.isna(label) else label.item() if hasattr(label, "item") else label,
-            "input_error": input_error,
-        })
-    return records, label_name
 
 
 def _scientific_config(config: RunConfig, label_name: str) -> dict[str, Any]:
@@ -162,7 +150,7 @@ def _scientific_config(config: RunConfig, label_name: str) -> dict[str, Any]:
         "contract": contract,
         "contract_sha256": object_sha256(contract),
         "mode": config.mode,
-        "label_column": int(config.label_column),
+        "label_column": config.label_column,
         "label_name": label_name,
         "rdkit_version": rdBase.rdkitVersion,
         "predictor_artifact_sha256": artifacts,
@@ -225,7 +213,7 @@ def _process_batch(
     config: RunConfig,
     scratch_batch: Path,
     prep_pool: Any,
-) -> tuple[list[tuple[str, Any, list[int]]], list[dict[str, Any]], dict[str, float]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, float]]:
     timings = {"preparation": 0.0, "java_1h": 0.0, "java_13c": 0.0, "features": 0.0}
     mol_dir = scratch_batch / "mols"
     raw_h = scratch_batch / "raw_1h"
@@ -288,7 +276,7 @@ def _process_batch(
                 raise RuntimeError("13C Java batch subprocess failed")
 
     generator = _create_ecfp_generator() if config.mode in {"FP", "total"} else None
-    feature_rows: list[tuple[str, Any, list[int]]] = []
+    feature_rows: list[dict[str, Any]] = []
     already_failed = {item["internal_id"] for item in metadata}
     started = time.perf_counter()
     for record in records:
@@ -321,7 +309,12 @@ def _process_batch(
                 vector = h_vector + c_vector + fp_vector
             if len(vector) != MODE_FEATURE_DIMENSIONS[config.mode]:
                 raise RuntimeError(f"Feature dimension mismatch: {len(vector)}")
-            feature_rows.append((record["molecule_name"], record["label"], vector))
+            feature_rows.append({
+                "source_index": record["source_index"],
+                "molecule_name": record["molecule_name"],
+                "label": record["label"],
+                "vector": vector,
+            })
             prepared_result = preparation_by_id.get(record["internal_id"])
             metadata.append({
                 "source_index": record["source_index"],
@@ -342,109 +335,6 @@ def _process_batch(
     return feature_rows, metadata, timings
 
 
-def _write_batch_commit(
-    output_root: Path,
-    batch_index: int,
-    feature_rows: list[tuple[str, Any, list[int]]],
-    metadata: list[dict[str, Any]],
-    timings: dict[str, float],
-    scratch_batch: Path,
-    config: RunConfig,
-) -> Path:
-    batches = output_root / "batches"
-    batches.mkdir(parents=True, exist_ok=True)
-    final = batches / f"batch_{batch_index:08d}"
-    temporary = batches / f".batch_{batch_index:08d}.{os.getpid()}.tmp"
-    if temporary.exists():
-        shutil.rmtree(temporary)
-    temporary.mkdir()
-    feature_path = temporary / "features.csv"
-    with feature_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(["MOLECULE_NAME", "LABEL"] + [
-            f"FEATURE_{index}" for index in range(1, MODE_FEATURE_DIMENSIONS[config.mode] + 1)
-        ])
-        for molecule_name, label, vector in feature_rows:
-            writer.writerow([molecule_name, label, *vector])
-    metadata_path = temporary / "metadata.jsonl"
-    atomic_write_text(metadata_path, "".join(
-        json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n" for item in metadata
-    ))
-    if config.retain_scientific_artifacts:
-        artifacts = temporary / "scientific_artifacts"
-        artifacts.mkdir()
-        for name in ("mols", "raw_1h", "raw_13c"):
-            source = scratch_batch / name
-            if source.is_dir():
-                shutil.copytree(source, artifacts / name)
-    commit = {
-        "schema_version": 1,
-        "batch_index": batch_index,
-        "successful": len(feature_rows),
-        "failed": sum(1 for item in metadata if item["status"] == "FAILED"),
-        "features_sha256": file_sha256(feature_path),
-        "metadata_sha256": file_sha256(metadata_path),
-        "timing_seconds": timings,
-        "committed_at": utc_now(),
-    }
-    atomic_write_json(temporary / "commit.json", commit)
-    if final.exists():
-        for relative in (Path("features.csv"), Path("metadata.jsonl")):
-            if (final / relative).read_bytes() != (temporary / relative).read_bytes():
-                raise RuntimeError(f"Existing atomic batch differs during replay: {final / relative}")
-        for artifact_root in (final / "scientific_artifacts", temporary / "scientific_artifacts"):
-            if artifact_root.exists() != config.retain_scientific_artifacts:
-                raise RuntimeError(f"Existing batch artifact retention differs: {final}")
-        if config.retain_scientific_artifacts:
-            left = {
-                path.relative_to(final / "scientific_artifacts"): path.read_bytes()
-                for path in (final / "scientific_artifacts").rglob("*") if path.is_file()
-            }
-            right = {
-                path.relative_to(temporary / "scientific_artifacts"): path.read_bytes()
-                for path in (temporary / "scientific_artifacts").rglob("*") if path.is_file()
-            }
-            if left != right:
-                raise RuntimeError(f"Existing atomic scientific artifacts differ during replay: {final}")
-        shutil.rmtree(temporary)
-        return final
-    os.replace(temporary, final)
-    return final
-
-
-def _assemble_final(output_root: Path, input_path: Path, mode: str) -> Path:
-    final_directory = output_root / "generated_ML_inputs"
-    final_directory.mkdir(parents=True, exist_ok=True)
-    final = final_directory / f"{input_path.stem}_{mode}_ML_input.csv"
-    temporary = final.with_name(f".{final.name}.{os.getpid()}.tmp")
-    wrote_header = False
-    with temporary.open("w", encoding="utf-8", newline="") as destination:
-        for batch in sorted((output_root / "batches").glob("batch_*")):
-            source = batch / "features.csv"
-            with source.open(encoding="utf-8", newline="") as handle:
-                for line_index, line in enumerate(handle):
-                    if line_index == 0 and wrote_header:
-                        continue
-                    destination.write(line)
-                    wrote_header = True
-        destination.flush()
-        os.fsync(destination.fileno())
-    os.replace(temporary, final)
-    return final
-
-
-def _aggregate_failures(output_root: Path) -> Path:
-    failures = output_root / "failures.jsonl"
-    lines: list[str] = []
-    for batch in sorted((output_root / "batches").glob("batch_*")):
-        for line in (batch / "metadata.jsonl").read_text(encoding="utf-8").splitlines():
-            value = json.loads(line)
-            if value.get("status") == "FAILED":
-                lines.append(json.dumps(value, sort_keys=True, ensure_ascii=False) + "\n")
-    atomic_write_text(failures, "".join(lines))
-    return failures
-
-
 def _check_stop() -> None:
     if _STOP_SIGNAL is not None:
         raise InterruptedError(f"Demiurge interrupted by signal {_STOP_SIGNAL}")
@@ -456,8 +346,29 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
     config = config.validated()
     install_signal_handlers()
     config.output_root.mkdir(parents=True, exist_ok=True)
-    records, label_name = _load_records(config.input_path, config.label_column)
-    scientific = _scientific_config(config, label_name)
+    reader = create_input_reader(
+        config.input_path,
+        input_format=config.input_format,
+        input_table=config.input_table,
+        input_query=config.input_query,
+        id_column=config.id_column,
+        smiles_column=config.smiles_column,
+        label_column=config.label_column,
+    )
+    description = reader.describe()
+    scientific = _scientific_config(config, description.label_name)
+    writer = create_output_writer(
+        output_format=config.output_format,
+        output_root=config.output_root,
+        output_db=config.output_db,
+        output_table=config.output_table,
+        metadata_table=config.metadata_table,
+        input_stem=config.input_path.stem,
+        mode=config.mode,
+        feature_contract=scientific["contract"],
+        overwrite_output=config.overwrite_output,
+    )
+    io_config = {"input": description.configuration, "output": writer.configuration()}
     identity = input_identity(config.input_path)
     run_id = hashlib.sha256(
         (identity["sha256"] + object_sha256(scientific)).encode("ascii")
@@ -472,10 +383,16 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             raise RuntimeError("Resume requires run_manifest.json and checkpoint.json")
         manifest = read_json(manifest_path)
         checkpoint = read_json(checkpoint_path)
-        validate_resume(checkpoint, input_info=identity, scientific_config=scientific)
+        validate_resume(
+            checkpoint,
+            input_info=identity,
+            scientific_config=scientific,
+            io_config=io_config,
+        )
         checkpoint["attempt"] = int(checkpoint.get("attempt", 1)) + 1
         if checkpoint["attempt"] > int(config.max_attempts):
             raise RuntimeError("Maximum run attempts exhausted")
+        writer.initialize(resume=True)
     else:
         manifest = {
             "manifest_schema_version": 1,
@@ -484,23 +401,29 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             "input_identity": identity,
             "mode": config.mode,
             "label_column": config.label_column,
-            "label_name": label_name,
+            "label_name": description.label_name,
             "scientific_config": scientific,
             "scientific_config_sha256": object_sha256(scientific),
+            "io_config": io_config,
             "operational_initial": {
-                key: value for key, value in asdict(config).items()
-                if key not in {
-                    "input_path", "canonical_input_path", "output_root", "temp_root", "resume"
-                }
+                "prep_workers": config.prep_workers,
+                "java_threads": config.java_threads,
+                "java_heap": config.java_heap,
+                "batch_size": config.batch_size,
+                "java_lifecycle": config.java_lifecycle,
+                "max_attempts": config.max_attempts,
+                "retain_scientific_artifacts": config.retain_scientific_artifacts,
             },
             "created_at": utc_now(),
         }
+        writer.initialize(resume=False)
         atomic_write_json(manifest_path, manifest)
         checkpoint = initial_checkpoint(
             run_id=run_id,
             input_info=identity,
             scientific_config=scientific,
-            total_rows=len(records),
+            total_rows=description.total_rows,
+            io_config=io_config,
         )
     checkpoint.update({"status": "RUNNING", "heartbeat": utc_now(), "pid": os.getpid(), "backend": config.backend})
     atomic_write_json(checkpoint_path, checkpoint)
@@ -512,6 +435,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
     os.environ[predictor.JAVA_DIAGNOSTICS_DIR_ENV] = str(config.output_root / "diagnostics" / "java")
     scratch, owner_token = create_owned_scratch(config.temp_root, run_id)
     prep_pool = None
+    batch_iterator = None
     total_started = time.perf_counter()
     aggregate_timings = {"preparation": 0.0, "java_1h": 0.0, "java_13c": 0.0, "features": 0.0}
     try:
@@ -522,9 +446,9 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             )
         start_index = int(checkpoint.get("next_row_index", 0))
         batch_index = int(checkpoint.get("committed_batches", 0))
-        for offset in range(start_index, len(records), config.batch_size):
+        batch_iterator = reader.iter_batches(config.batch_size, start_index)
+        for offset, selected in batch_iterator:
             _check_stop()
-            selected = records[offset:offset + config.batch_size]
             last_error: Exception | None = None
             for batch_attempt in range(1, config.max_attempts + 1):
                 scratch_batch = scratch / f"batch_{batch_index:08d}_try_{batch_attempt:02d}"
@@ -533,9 +457,13 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
                 scratch_batch.mkdir()
                 try:
                     feature_rows, metadata, timings = _process_batch(selected, config, scratch_batch, prep_pool)
-                    _write_batch_commit(
-                        config.output_root, batch_index, feature_rows, metadata,
-                        timings, scratch_batch, config,
+                    writer.commit_batch(
+                        batch_index,
+                        feature_rows,
+                        metadata,
+                        timings,
+                        scratch_batch,
+                        config.retain_scientific_artifacts,
                     )
                     last_error = None
                     break
@@ -570,8 +498,11 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             atomic_write_json(checkpoint_path, checkpoint)
             write_progress(config.output_root, checkpoint)
 
-        final = _assemble_final(config.output_root, config.input_path, config.mode)
-        failures = _aggregate_failures(config.output_root)
+        final, failures = writer.finalize(
+            total=description.total_rows,
+            successful=int(checkpoint["successful"]),
+            failed=int(checkpoint["failed"]),
+        )
         wall = time.perf_counter() - total_started
         checkpoint.update({"status": "DONE", "heartbeat": utc_now(), "finished_at": utc_now(), "runtime_seconds": wall})
         atomic_write_json(checkpoint_path, checkpoint)
@@ -582,15 +513,16 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             "contract_id": scientific["contract"]["contract_id"],
             "nmr_representation_version": NMR_REPRESENTATION_VERSION if config.mode != "FP" else None,
             "input_identity": identity,
-            "total": len(records),
+            "total": description.total_rows,
             "successful": checkpoint["successful"],
             "failed": checkpoint["failed"],
             "wall_time_seconds": wall,
-            "molecules_per_second": (len(records) / wall if wall else None),
+            "molecules_per_second": (description.total_rows / wall if wall else None),
             "stage_timing_seconds": aggregate_timings,
             "final_output": str(final),
             "final_output_sha256": file_sha256(final),
             "failures": str(failures),
+            "io": io_config,
             "operational": {
                 "backend": config.backend,
                 "batch_size": config.batch_size,
@@ -616,6 +548,9 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
         write_progress(config.output_root, checkpoint)
         raise
     finally:
+        close_iterator = getattr(batch_iterator, "close", None)
+        if callable(close_iterator):
+            close_iterator()
         if prep_pool is not None:
             prep_pool.terminate()
             prep_pool.join()
@@ -627,12 +562,24 @@ def resume_pipeline(output_root: Path, temp_root: Path | None = None, **override
     root = output_root.expanduser().resolve()
     manifest = read_json(root / "run_manifest.json")
     initial = manifest.get("operational_initial") or {}
+    io_config = manifest.get("io_config") or {
+        "input": {
+            "input_format": "csv",
+            "id_column": "MOLECULE_NAME",
+            "smiles_column": "SMILES",
+            "label_column": manifest["label_column"],
+            "label_name": manifest["label_name"],
+        },
+        "output": {"output_format": "csv"},
+    }
+    input_config = io_config["input"]
+    output_config = io_config["output"]
     values = {
         "input_path": Path(overrides.get("input_path") or manifest["input_path"]),
         "mode": manifest["mode"],
         "output_root": root,
         "temp_root": temp_root or Path(initial.get("temp_root") or root / "tmp"),
-        "label_column": int(manifest["label_column"]),
+        "label_column": input_config["label_column"],
         "prep_workers": int(overrides.get("prep_workers") or initial.get("prep_workers", 4)),
         "java_threads": int(overrides.get("java_threads") or initial.get("java_threads", 2)),
         "java_heap": str(overrides.get("java_heap") or initial.get("java_heap", DEFAULT_JAVA_HEAP)),
@@ -643,6 +590,15 @@ def resume_pipeline(output_root: Path, temp_root: Path | None = None, **override
         "backend": str(overrides.get("backend") or "local"),
         "resume": True,
         "canonical_input_path": Path(manifest["input_path"]),
+        "input_format": input_config.get("input_format", "csv"),
+        "input_table": input_config.get("input_table"),
+        "input_query": input_config.get("input_query"),
+        "id_column": input_config.get("id_column", "MOLECULE_NAME"),
+        "smiles_column": input_config.get("smiles_column", "SMILES"),
+        "output_format": output_config.get("output_format", "csv"),
+        "output_db": Path(output_config["output_db"]) if output_config.get("output_db") else None,
+        "output_table": output_config.get("output_table", "demiurge_features"),
+        "metadata_table": output_config.get("metadata_table", "demiurge_metadata"),
     }
     return run_pipeline(RunConfig(**values))
 
