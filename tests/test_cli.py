@@ -7,6 +7,13 @@ import demiurge_supervisor
 
 
 class CliTests(unittest.TestCase):
+    def test_murcko_output_metadata_is_explicitly_selectable(self):
+        args = demiurge.build_parser().parse_args([
+            "run", "--input", "input.csv", "--mode", "total",
+            "--output-root", "out", "--murcko",
+        ])
+        self.assertTrue(args.murcko)
+
     def test_existing_csv_run_defaults_remain_compatible(self):
         args = demiurge.build_parser().parse_args([
             "run", "--input", "input.csv", "--mode", "total", "--output-root", "results",

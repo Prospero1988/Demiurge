@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -35,6 +36,51 @@ def prepare_mol_v2(smiles: str) -> tuple[str, str]:
     return canonical, block
 
 
+NO_SCAFFOLD = "<NO_SCAFFOLD>"
+
+
+@dataclass(frozen=True)
+class MolecularIdentity:
+    canonical_smiles: str
+    identity_smiles: str
+    identity_sha256: str
+    murcko_smiles: str
+    murcko_id: str
+
+
+def molecular_identity_v2(smiles: str) -> MolecularIdentity:
+    """Return the deterministic graph identity used for compute de-duplication.
+
+    The identity follows the active NMR V2 preparation contract: RDKit parsing,
+    canonicalization and stereochemistry removal. It deliberately does not
+    normalize fragments, charges or tautomers beyond RDKit's normal sanitization.
+    """
+    Chem, _ = require_rdkit()
+    from rdkit.Chem.Scaffolds import MurckoScaffold
+
+    molecule = Chem.MolFromSmiles(str(smiles))
+    if molecule is None:
+        raise ValueError("RDKit rejected SMILES")
+    canonical = Chem.MolToSmiles(molecule, canonical=True, isomericSmiles=True)
+    identity_molecule = Chem.MolFromSmiles(canonical)
+    if identity_molecule is None:
+        raise ValueError("RDKit failed to recreate canonical SMILES")
+    Chem.RemoveStereochemistry(identity_molecule)
+    identity_smiles = Chem.MolToSmiles(
+        identity_molecule, canonical=True, isomericSmiles=False
+    )
+    scaffold = MurckoScaffold.MurckoScaffoldSmiles(
+        mol=identity_molecule, includeChirality=False
+    ) or NO_SCAFFOLD
+    return MolecularIdentity(
+        canonical_smiles=canonical,
+        identity_smiles=identity_smiles,
+        identity_sha256=hashlib.sha256(identity_smiles.encode("utf-8")).hexdigest(),
+        murcko_smiles=scaffold,
+        murcko_id=hashlib.sha256(scaffold.encode("utf-8")).hexdigest(),
+    )
+
+
 def _worker_init() -> None:
     from rdkit import RDLogger
 
@@ -55,6 +101,10 @@ class PreparationResult:
     molecule_name: str
     smiles: str
     canonical_smiles: str | None
+    identity_smiles: str | None
+    identity_sha256: str | None
+    murcko_smiles: str | None
+    murcko_id: str | None
     mol_path: str | None
     error_type: str | None
     error_message: str | None
@@ -80,7 +130,8 @@ def _atomic_text(path: Path, text: str) -> None:
 
 def prepare_task(task: PreparationTask) -> PreparationResult:
     try:
-        canonical, block = prepare_mol_v2(task.smiles)
+        identity = molecular_identity_v2(task.smiles)
+        canonical, block = prepare_mol_v2(identity.canonical_smiles)
         output = Path(task.output_directory) / f"{task.internal_id}.mol"
         _atomic_text(output, block)
         return PreparationResult(
@@ -88,6 +139,10 @@ def prepare_task(task: PreparationTask) -> PreparationResult:
             task.molecule_name,
             task.smiles,
             canonical,
+            identity.identity_smiles,
+            identity.identity_sha256,
+            identity.murcko_smiles,
+            identity.murcko_id,
             str(output),
             None,
             None,
@@ -97,6 +152,10 @@ def prepare_task(task: PreparationTask) -> PreparationResult:
             task.internal_id,
             task.molecule_name,
             task.smiles,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             type(exc).__name__,

@@ -57,7 +57,7 @@ def csv_rows(path: Path) -> dict[str, tuple[object, bytes]]:
         reader = csv.reader(handle)
         next(reader)
         return {
-            row[0]: (float(row[1]), np.asarray(row[2:], dtype="<f4").tobytes())
+            row[0]: (float(row[2]), np.asarray(row[3:], dtype="<f4").tobytes())
             for row in reader
         }
 
@@ -65,9 +65,9 @@ def csv_rows(path: Path) -> dict[str, tuple[object, bytes]]:
 def sqlite_rows(path: Path, table: str = "features") -> dict[str, tuple[object, bytes]]:
     with closing(sqlite3.connect(path)) as connection:
         return {
-            molecule_id: (label, bytes(blob))
-            for molecule_id, label, blob in connection.execute(
-                f'SELECT molecule_id,label,feature_blob FROM "{table}" WHERE status="SUCCESS"'
+            record_id: (label, bytes(blob))
+            for record_id, label, blob in connection.execute(
+                f'SELECT record_id,label,feature_blob FROM "{table}" WHERE status="SUCCESS"'
             )
         }
 
@@ -115,11 +115,11 @@ class GenericIoTests(unittest.TestCase):
             self.assertEqual(expected, csv_rows(Path(db_csv["final_output"])))
             self.assertEqual(expected, sqlite_rows(Path(db_db["final_output"])))
             self.assertEqual(Path(csv_csv["final_output"]).read_bytes(), Path(db_csv["final_output"]).read_bytes())
-            self.assertEqual(set(expected), {"mol-a", "mol-b"})
+            self.assertEqual(len(expected), 2)
 
             with closing(sqlite3.connect(csv_db["final_output"])) as connection:
                 failed = connection.execute(
-                    'SELECT molecule_id,label,status,error,feature_blob FROM "features" WHERE status="FAILED"'
+                    'SELECT molecule_name,label,status,error,feature_blob FROM "features" WHERE status="FAILED"'
                 ).fetchone()
                 metadata = dict(connection.execute('SELECT key,value_json FROM "schema_info"'))
             self.assertEqual(failed[:3], ("mol-bad", 1.0, "FAILED"))
@@ -251,7 +251,7 @@ class GenericIoTests(unittest.TestCase):
                 java_lifecycle="persistent",
             )
             self.assertEqual((summary["successful"], summary["failed"]), (3, 0))
-            self.assertEqual(set(sqlite_rows(Path(summary["final_output"]))), {"mol-a", "mol-b", "mol-c"})
+            self.assertEqual(len(sqlite_rows(Path(summary["final_output"]))), 3)
 
 
 if __name__ == "__main__":

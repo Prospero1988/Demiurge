@@ -19,7 +19,7 @@ from .base import ColumnSelector, InputDescription, InputReader, OutputWriter, r
 from .csv_backend import _aggregate_failures, _retain_artifacts, _validate_replay
 
 
-SQLITE_SCHEMA_VERSION = 1
+SQLITE_SCHEMA_VERSION = 2
 FEATURE_DTYPE = "<f4"
 
 
@@ -112,7 +112,8 @@ class SqliteInputReader(InputReader):
             ))
             self._select_sql = (
                 f"SELECT {selected} FROM {self._base_sql()} "
-                f"ORDER BY {quote_identifier(self.id_column)}"
+                f"ORDER BY {quote_identifier(self.id_column)}, "
+                f"{quote_identifier(self.smiles_column)}, {quote_identifier(self._label_name)}"
             )
             total = int(connection.execute(f"SELECT COUNT(*) FROM {self._base_sql()}").fetchone()[0])
         self._description = InputDescription(
@@ -126,7 +127,7 @@ class SqliteInputReader(InputReader):
                 "smiles_column": self.smiles_column,
                 "label_column": self.label_column,
                 "label_name": self._label_name,
-                "ordering": self.id_column,
+                "ordering": [self.id_column, self.smiles_column, self._label_name],
             },
         )
         return self._description
@@ -162,6 +163,7 @@ class SqliteOutputWriter(OutputWriter):
         metadata_table: str,
         feature_contract: dict[str, Any],
         overwrite: bool,
+        include_murcko: bool = False,
     ):
         self.output_root = output_root
         self.output_db = output_db
@@ -169,6 +171,7 @@ class SqliteOutputWriter(OutputWriter):
         self.metadata_table = metadata_table
         self.feature_contract = feature_contract
         self.overwrite = overwrite
+        self.include_murcko = include_murcko
         quote_identifier(output_table)
         quote_identifier(metadata_table)
         if output_table == metadata_table:
@@ -181,6 +184,8 @@ class SqliteOutputWriter(OutputWriter):
             "output_table": self.output_table,
             "metadata_table": self.metadata_table,
             "feature_blob_dtype": FEATURE_DTYPE,
+            "record_schema_version": SQLITE_SCHEMA_VERSION,
+            "include_murcko": self.include_murcko,
         }
 
     def initialize(self, *, resume: bool) -> None:
@@ -208,8 +213,11 @@ class SqliteOutputWriter(OutputWriter):
             connection.execute(f"""
                 CREATE TABLE {quote_identifier(self.output_table)} (
                     source_index INTEGER PRIMARY KEY,
-                    molecule_id TEXT NOT NULL,
+                    record_id TEXT NOT NULL UNIQUE,
+                    molecule_name TEXT NOT NULL,
                     label,
+                    murcko_smiles TEXT,
+                    murcko_id TEXT,
                     status TEXT NOT NULL CHECK(status IN ('SUCCESS','FAILED')),
                     error_stage TEXT,
                     error_type TEXT,
@@ -253,6 +261,8 @@ class SqliteOutputWriter(OutputWriter):
                     "ECFP4": [h_count + c_count, h_count + c_count + fp_count] if fp_count else None,
                 },
                 "feature_order": self.feature_contract["feature_order"],
+                "record_id_contract": "SHA256(canonical selected source record)[0:16] + '-R' + one-based source row",
+                "murcko_included": self.include_murcko,
                 "created_at": utc_now(),
             }
             connection.executemany(
@@ -280,8 +290,11 @@ class SqliteOutputWriter(OutputWriter):
                 digest = None
             encoded.append((
                 source_index,
+                item["record_id"],
                 item["molecule_name"],
                 feature["label"] if feature is not None else item.get("label"),
+                feature.get("murcko_smiles") if feature is not None and self.include_murcko else None,
+                feature.get("murcko_id") if feature is not None and self.include_murcko else None,
                 item["status"],
                 item.get("failure_stage"),
                 item.get("failure_type"),
@@ -306,7 +319,7 @@ class SqliteOutputWriter(OutputWriter):
             connection.execute("PRAGMA synchronous=FULL")
             for row in encoded:
                 existing = connection.execute(
-                    f"SELECT source_index,molecule_id,label,status,error_stage,error_type,error,feature_blob,feature_sha256 FROM {table} WHERE source_index=?",
+                    f"SELECT source_index,record_id,molecule_name,label,murcko_smiles,murcko_id,status,error_stage,error_type,error,feature_blob,feature_sha256 FROM {table} WHERE source_index=?",
                     (row[0],),
                 ).fetchone()
                 if existing is not None:
@@ -314,7 +327,7 @@ class SqliteOutputWriter(OutputWriter):
                         raise RuntimeError(f"Existing SQLite row differs during replay: source_index={row[0]}")
                     continue
                 connection.execute(
-                    f"INSERT INTO {table}(source_index,molecule_id,label,status,error_stage,error_type,error,feature_blob,feature_sha256) VALUES (?,?,?,?,?,?,?,?,?)",
+                    f"INSERT INTO {table}(source_index,record_id,molecule_name,label,murcko_smiles,murcko_id,status,error_stage,error_type,error,feature_blob,feature_sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     row,
                 )
             connection.commit()

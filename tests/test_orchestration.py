@@ -39,6 +39,7 @@ class OrchestrationTests(unittest.TestCase):
             id_column="MOLECULE_NAME", smiles_column="SMILES",
             output_format="csv", output_table="demiurge_features",
             metadata_table="demiurge_metadata",
+            murcko=True,
         )
 
     def create_inputs(self, root: Path):
@@ -60,6 +61,7 @@ class OrchestrationTests(unittest.TestCase):
             self.assertEqual(manifest["submissions"][1]["dependency"], "DRYRUN1")
             self.assertEqual(manifest["io"]["input_format"], "csv")
             self.assertEqual(manifest["io"]["output_format"], "csv")
+            self.assertTrue(manifest["io"]["include_murcko"])
             _, loaded = load_manifest(path)
             self.assertEqual(loaded["max_attempts"], 3)
 

@@ -36,6 +36,16 @@ raw SMILES
 
 The NMR V2 representation is intentionally incompatible with models trained on the former legacy Demiurge spectra.
 
+### Record identity, molecular de-duplication, and Murcko metadata
+
+`MOLECULE_NAME` is provenance, not a unique key. Every source row receives a deterministic `RECORD_ID` formed from the SHA256 of its canonical selected source record plus its one-based source-row position. Exact duplicate experimental rows therefore remain distinct and traceable. For an unchanged, equivalently ordered CSV/SQLite dataset, the IDs are reproducible.
+
+Historical Demiurge (commit `5bed7c7`) used `pandas.drop_duplicates(subset="MOLECULE_NAME", keep="first")`. That explains the inconsistent observation: repeated names were removed even when their structures/labels differed, while identical structures under different names passed through. This name-based row deletion is no longer used.
+
+Expensive feature calculation is de-duplicated by the SHA256 of RDKit canonical non-isomeric SMILES after `RemoveStereochemistry`, matching the active NMR V2/achiral ECFP4 graph contract. Canonical/non-canonical traversal, aromatic/Kekulé notation, explicit/implicit hydrogen notation, and stereochemical notation that the active representation removes map to one computation. Disconnected fragments, formal charges, and tautomers are not standardized and remain distinct. The computed vector is then mapped back to every accepted experimental row, preserving its own `RECORD_ID`, `MOLECULE_NAME`, and `LABEL`. The summary's `record_audit` distinguishes repeated molecule names, repeated molecular structures, and exact repeated input records.
+
+Pass `--murcko` to append `MURCKO_SMILES` and `MURCKO_ID`. The scaffold is RDKit's canonical, non-isomeric Bemis–Murcko scaffold from the same stereochemistry-removed identity graph. Acyclic molecules use the explicit sentinel `<NO_SCAFFOLD>`. `MURCKO_ID` is the full hexadecimal SHA256 of `MURCKO_SMILES`; it is independent of row order and Python hashing. These are metadata and never change the numeric feature width.
+
 ## Architecture
 
 ```text
@@ -103,7 +113,8 @@ python demiurge.py run \
   --prep-workers 4 \
   --java-threads 2 \
   --java-heap 4G \
-  --java-lifecycle persistent
+  --java-lifecycle persistent \
+  --murcko
 ```
 
 Operational options do not enter scientific identity. `persistent` is the validated default JVM lifecycle; `--java-lifecycle per-batch` remains available for debugging and A/B validation. Use `--retain-scientific-artifacts` when durable MOL and raw NMR files are required; otherwise they remain in marker-owned temporary storage and are deleted after shutdown.
@@ -170,7 +181,8 @@ Submit one or more CSV shards:
   --pattern '*.csv' \
   --output-root /raid/homes/aleniak/demiurge_runs \
   --scratch-root /nvme/scratch/aleniak/demiurge_runs/production_001 \
-  --campaign production_001
+  --campaign production_001 \
+  --murcko
 ```
 
 SQLite campaigns use the same supervisor. Each matched input shard receives its own result directory and output database; workers never share an SQLite writer:
@@ -191,7 +203,7 @@ Important `submit` options are:
 
 - discovery and input: `--input-dir`, `--pattern`, `--input-format`, `--input-table`/`--input-query`, `--id-column`, `--smiles-column`, `--label-column`, `--campaign`;
 - durable/runtime paths: `--output-root`, `--scratch-root`, `--project-root`;
-- output: `--output-format`, `--output-table`, `--metadata-table`;
+- output: `--output-format`, `--output-table`, `--metadata-table`, `--murcko`;
 - science selection: `--mode`;
 - operational tuning: `--batch-size`, `--prep-workers`, `--java-threads`, `--java-heap`, `--java-lifecycle`;
 - scheduler resources: `--cpus-per-task`, `--memory`, `--partition`, `--time`, `--max-concurrent`, `--job-name-prefix`;
@@ -239,14 +251,15 @@ results/<input-stem>_<input-sha256-prefix>/
 
 For SQLite output, the final file is instead `generated_ML_inputs/<input-stem>_<mode>_ML_input.sqlite` unless standalone `--output-db` selects another path.
 
-Only successful molecules enter the final feature matrix. Each batch records all molecule outcomes in `metadata.jsonl`; failures are aggregated into `failures.jsonl`. Atomic batch directories are the resume boundary. The summary stores counts, timings, throughput, the final output path, and its SHA256.
+Only scientifically successful records enter the final feature matrix; none are collapsed because of a repeated name or molecular structure. Canonical CSV output with `--murcko` is ordered `RECORD_ID, MOLECULE_NAME, LABEL, MURCKO_SMILES, MURCKO_ID, FEATURE_1 ... FEATURE_2448`. Each batch records all molecule outcomes in `metadata.jsonl`; failures are aggregated into `failures.jsonl`. Atomic batch directories are the resume boundary. The summary stores counts, timings, throughput, the final output path, its SHA256, and the duplicate audit.
 
 ### SQLite output schema
 
 The configurable result table (default `demiurge_features`) contains:
 
 - `source_index`: deterministic zero-based input position and primary key;
-- `molecule_id`, `label`;
+- unique `record_id`, non-unique provenance `molecule_name`, and `label`;
+- nullable `murcko_smiles`, `murcko_id` (populated with `--murcko`);
 - `status`: `SUCCESS` or `FAILED`;
 - `error_stage`, `error_type`, `error`;
 - `feature_blob`: contiguous little-endian NumPy `float32` (`<f4`) data, or `NULL` for failures;

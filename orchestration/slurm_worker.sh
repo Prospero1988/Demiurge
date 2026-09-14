@@ -15,7 +15,7 @@ mapfile -d '' -t FIELDS < <(
         --task-index "${SLURM_ARRAY_TASK_ID}" \
         --attempt "${DEMIURGE_ATTEMPT}"
 )
-if ((${#FIELDS[@]} != 25)); then
+if ((${#FIELDS[@]} != 26)); then
     echo "Invalid manifest row field count: ${#FIELDS[@]}" >&2
     exit 2
 fi
@@ -45,6 +45,7 @@ SMILES_COLUMN=${FIELDS[21]}
 OUTPUT_FORMAT=${FIELDS[22]}
 OUTPUT_TABLE=${FIELDS[23]}
 METADATA_TABLE=${FIELDS[24]}
+INCLUDE_MURCKO=${FIELDS[25]}
 
 if [[ "${PROJECT_ROOT_FROM_MANIFEST}" != "${DEMIURGE_PROJECT_ROOT}" ]]; then
     echo "Compute project root differs from frozen manifest" >&2
@@ -126,6 +127,7 @@ else
     if [[ -n "${INPUT_TABLE}" ]]; then COMMAND+=(--input-table "${INPUT_TABLE}"); fi
     if [[ -n "${INPUT_QUERY}" ]]; then COMMAND+=(--input-query "${INPUT_QUERY}"); fi
     if [[ "${RETAIN_ARTIFACTS}" == "1" ]]; then COMMAND+=(--retain-scientific-artifacts); fi
+    if [[ "${INCLUDE_MURCKO}" == "1" ]]; then COMMAND+=(--murcko); fi
 fi
 COMMAND+=(--temp-root "${STAGING_DIRECTORY}" --prep-workers "${PREP_WORKERS}" --java-threads "${JAVA_THREADS}" --java-heap "${JAVA_HEAP}" --batch-size "${BATCH_SIZE}" --java-lifecycle "${JAVA_LIFECYCLE}" --backend slurm-worker)
 

@@ -47,6 +47,7 @@ def create_output_writer(
     mode: str,
     feature_contract: dict[str, Any],
     overwrite_output: bool,
+    include_murcko: bool = False,
 ) -> OutputWriter:
     if output_format == "csv":
         if output_db is not None:
@@ -55,7 +56,10 @@ def create_output_writer(
             raise ValueError("overwrite_output is valid only for SQLite output")
         if output_table != "demiurge_features" or metadata_table != "demiurge_metadata":
             raise ValueError("output_table/metadata_table are valid only for SQLite output")
-        return CsvOutputWriter(output_root, input_stem, mode, int(feature_contract["feature_dimension"]))
+        return CsvOutputWriter(
+            output_root, input_stem, mode, int(feature_contract["feature_dimension"]),
+            include_murcko=include_murcko,
+        )
     if output_format == "sqlite":
         selected_db = output_db or (
             output_root / "generated_ML_inputs" / f"{input_stem}_{mode}_ML_input.sqlite"
@@ -67,5 +71,6 @@ def create_output_writer(
             metadata_table=metadata_table,
             feature_contract=feature_contract,
             overwrite=overwrite_output,
+            include_murcko=include_murcko,
         )
     raise ValueError(f"Unsupported output_format: {output_format!r}")

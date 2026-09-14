@@ -89,17 +89,25 @@ class CsvInputReader(InputReader):
 
 
 class CsvOutputWriter(OutputWriter):
-    def __init__(self, output_root: Path, input_stem: str, mode: str, feature_count: int):
+    def __init__(
+        self, output_root: Path, input_stem: str, mode: str, feature_count: int,
+        *, include_murcko: bool = False,
+    ):
         self.output_root = output_root
         self.input_stem = input_stem
         self.mode = mode
         self.feature_count = feature_count
+        self.include_murcko = include_murcko
 
     def initialize(self, *, resume: bool) -> None:
         del resume
 
     def configuration(self) -> dict[str, Any]:
-        return {"output_format": "csv"}
+        return {
+            "output_format": "csv",
+            "record_schema_version": 2,
+            "include_murcko": self.include_murcko,
+        }
 
     def commit_batch(
         self,
@@ -120,11 +128,17 @@ class CsvOutputWriter(OutputWriter):
         feature_path = temporary / "features.csv"
         with feature_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle, lineterminator="\n")
-            writer.writerow(["MOLECULE_NAME", "LABEL"] + [
+            metadata_columns = ["RECORD_ID", "MOLECULE_NAME", "LABEL"]
+            if self.include_murcko:
+                metadata_columns.extend(["MURCKO_SMILES", "MURCKO_ID"])
+            writer.writerow(metadata_columns + [
                 f"FEATURE_{index}" for index in range(1, self.feature_count + 1)
             ])
             for row in feature_rows:
-                writer.writerow([row["molecule_name"], row["label"], *row["vector"]])
+                values = [row["record_id"], row["molecule_name"], row["label"]]
+                if self.include_murcko:
+                    values.extend([row["murcko_smiles"], row["murcko_id"]])
+                writer.writerow([*values, *row["vector"]])
         metadata_path = temporary / "metadata.jsonl"
         atomic_write_text(metadata_path, "".join(
             json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n" for item in metadata

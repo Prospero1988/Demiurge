@@ -62,7 +62,7 @@ class PipelineTests(unittest.TestCase):
             final = Path(summary["final_output"])
             with final.open(newline="", encoding="utf-8") as handle:
                 rows = list(csv.reader(handle))
-            self.assertEqual(len(rows[0]), 2450)
+            self.assertEqual(len(rows[0]), 2451)
             self.assertEqual(len(rows), 2)
             self.assertTrue((root / "output" / "failures.jsonl").read_text(encoding="utf-8"))
 
@@ -140,7 +140,8 @@ class PipelineTests(unittest.TestCase):
             with Path(summary["final_output"]).open(newline="", encoding="utf-8") as handle:
                 rows = list(csv.reader(handle))
             self.assertEqual(len(rows), 3)
-            self.assertEqual([row[0] for row in rows[1:]], ["mol-0", "mol-1"])
+            self.assertEqual([row[1] for row in rows[1:]], ["mol-0", "mol-1"])
+            self.assertEqual(len({row[0] for row in rows[1:]}), 2)
 
     @mock.patch("demiurge_bin.pipeline.predictor.shutdown_persistent_java_processors")
     @mock.patch("demiurge_bin.pipeline.predictor.run_java_batch_processor", side_effect=fake_java)

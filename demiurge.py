@@ -61,6 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--label-column", type=column_selector, default=3, help="one-based position or column name")
     run.add_argument("--max-attempts", type=positive_integer, default=3)
     run.add_argument("--retain-scientific-artifacts", action="store_true")
+    run.add_argument(
+        "--murcko", action="store_true",
+        help="append canonical MURCKO_SMILES and stable MURCKO_ID metadata",
+    )
     run.add_argument("--backend", choices=("local", "slurm-worker"), default="local", help=argparse.SUPPRESS)
     add_operational_arguments(run)
 
@@ -144,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             output_table=args.output_table,
             metadata_table=args.metadata_table,
             overwrite_output=args.overwrite_output,
+            include_murcko=args.murcko,
         ))
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

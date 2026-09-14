@@ -100,6 +100,7 @@ def prepare_manifest(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
     output_format = getattr(args, "output_format", "csv")
     output_table = getattr(args, "output_table", "demiurge_features")
     metadata_table = getattr(args, "metadata_table", "demiurge_metadata")
+    include_murcko = bool(getattr(args, "murcko", False))
     io_config = {
         "input_format": input_format,
         "input_table": input_table,
@@ -109,6 +110,7 @@ def prepare_manifest(args: argparse.Namespace) -> tuple[Path, dict[str, Any]]:
         "output_format": output_format,
         "output_table": output_table,
         "metadata_table": metadata_table,
+        "include_murcko": include_murcko,
     }
     contract = scientific_contract(mode)
     tasks = []
@@ -412,6 +414,7 @@ def emit_row(manifest: dict[str, Any], task_index: int) -> None:
         manifest.get("io", {}).get("output_format", "csv"),
         manifest.get("io", {}).get("output_table", "demiurge_features"),
         manifest.get("io", {}).get("metadata_table", "demiurge_metadata"),
+        1 if manifest.get("io", {}).get("include_murcko", False) else 0,
     ]
     sys.stdout.buffer.write(b"\0".join(str(value).encode("utf-8") for value in fields) + b"\0")
 
@@ -452,6 +455,10 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--conda-env", help="Conda environment name")
     submit.add_argument("--no-staging", action="store_true", help="read directly instead of staging to scratch")
     submit.add_argument("--retain-scientific-artifacts", action="store_true", help="retain MOL and raw NMR files")
+    submit.add_argument(
+        "--murcko", action="store_true",
+        help="append Murcko scaffold metadata to every successful output record",
+    )
     submit.add_argument("--dry-run", action="store_true", help="write manifest and commands without sbatch")
     resume = commands.add_parser("resume", help="submit remaining compatible shards")
     resume.add_argument("--manifest", type=Path, required=True)

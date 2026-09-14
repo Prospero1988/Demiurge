@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 from . import predictor
+from .computation_cache import ComputationCache
 from .bucketing import (
     bucket_shifts,
     parse_prediction_csv,
@@ -31,7 +32,9 @@ from .contracts import (
     H_MAX,
     H_MIN,
     MODE_FEATURE_DIMENSIONS,
+    MOLECULAR_IDENTITY_CONTRACT,
     NMR_REPRESENTATION_VERSION,
+    RECORD_ID_CONTRACT,
     object_sha256,
     scientific_contract,
     verify_predictor_artifacts,
@@ -40,7 +43,13 @@ from .io_utils import cleanup_owned_scratch, create_owned_scratch
 from .io import create_input_reader, create_output_writer
 from .io.base import ColumnSelector
 from .java_heap import DEFAULT_JAVA_HEAP, normalize_java_heap
-from .preparation import PreparationResult, _worker_init, prepare_batch
+from .preparation import (
+    MolecularIdentity,
+    PreparationResult,
+    _worker_init,
+    molecular_identity_v2,
+    prepare_batch,
+)
 from .run_state import (
     atomic_write_json,
     file_sha256,
@@ -83,6 +92,7 @@ class RunConfig:
     output_table: str = "demiurge_features"
     metadata_table: str = "demiurge_metadata"
     overwrite_output: bool = False
+    include_murcko: bool = False
 
     def validated(self) -> "RunConfig":
         mode_aliases = {"1h": "1H", "13c": "13C", "fp": "FP", "hybrid": "hybrid", "total": "total"}
@@ -154,6 +164,7 @@ def _scientific_config(config: RunConfig, label_name: str) -> dict[str, Any]:
         "label_name": label_name,
         "rdkit_version": rdBase.rdkitVersion,
         "predictor_artifact_sha256": artifacts,
+        "molecular_identity_contract": MOLECULAR_IDENTITY_CONTRACT,
     }
 
 
@@ -197,6 +208,7 @@ def _failure(record: dict[str, Any], stage: str, error: Exception | str) -> dict
     error_type = type(error).__name__ if isinstance(error, Exception) else "InputQCError"
     return {
         "source_index": record["source_index"],
+        "record_id": record["record_id"],
         "internal_id": record["internal_id"],
         "molecule_name": record["molecule_name"],
         "smiles": record["smiles"],
@@ -213,6 +225,7 @@ def _process_batch(
     config: RunConfig,
     scratch_batch: Path,
     prep_pool: Any,
+    feature_cache: ComputationCache,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, float]]:
     timings = {"preparation": 0.0, "java_1h": 0.0, "java_13c": 0.0, "features": 0.0}
     mol_dir = scratch_batch / "mols"
@@ -231,6 +244,7 @@ def _process_batch(
 
     needs_nmr = config.mode != "FP"
     preparation_by_id: dict[str, PreparationResult] = {}
+    identity_by_id: dict[str, MolecularIdentity] = {}
     if needs_nmr and good_input:
         started = time.perf_counter()
         prepared = prepare_batch(good_input, mol_dir, pool=prep_pool)
@@ -244,12 +258,49 @@ def _process_batch(
                     "PREPARATION",
                     f"{result.error_type}: {result.error_message}",
                 ))
+            else:
+                identity_by_id[record["internal_id"]] = MolecularIdentity(
+                    canonical_smiles=str(result.canonical_smiles),
+                    identity_smiles=str(result.identity_smiles),
+                    identity_sha256=str(result.identity_sha256),
+                    murcko_smiles=str(result.murcko_smiles),
+                    murcko_id=str(result.murcko_id),
+                )
+    elif good_input:
+        for record in good_input:
+            try:
+                identity_by_id[record["internal_id"]] = molecular_identity_v2(record["smiles"])
+            except Exception as exc:
+                metadata.append(_failure(record, "PREPARATION", exc))
 
     prepared_records = [
         record for record in good_input
-        if not needs_nmr or preparation_by_id[record["internal_id"]].successful
+        if record["internal_id"] in identity_by_id
     ]
-    if needs_nmr and prepared_records:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for record in prepared_records:
+        key = identity_by_id[record["internal_id"]].identity_sha256
+        groups.setdefault(key, []).append(record)
+
+    uncached_representatives: list[dict[str, Any]] = []
+    cached_by_key: dict[str, tuple[list[int], dict[str, Any]]] = {}
+    for key, group in groups.items():
+        identity = identity_by_id[group[0]["internal_id"]]
+        cached = None if config.retain_scientific_artifacts else feature_cache.get(
+            key, identity.identity_smiles
+        )
+        if cached is None:
+            uncached_representatives.append(group[0])
+        else:
+            cached_by_key[key] = (cached.vector, cached.diagnostics)
+
+    representative_ids = {item["internal_id"] for item in uncached_representatives}
+    if needs_nmr:
+        for record in prepared_records:
+            if record["internal_id"] not in representative_ids:
+                Path(str(preparation_by_id[record["internal_id"]].mol_path)).unlink(missing_ok=True)
+
+    if needs_nmr and uncached_representatives:
         if config.mode in {"1H", "hybrid", "total"}:
             started = time.perf_counter()
             result = predictor.run_java_batch_processor(
@@ -277,11 +328,12 @@ def _process_batch(
 
     generator = _create_ecfp_generator() if config.mode in {"FP", "total"} else None
     feature_rows: list[dict[str, Any]] = []
-    already_failed = {item["internal_id"] for item in metadata}
     started = time.perf_counter()
-    for record in records:
-        if record["internal_id"] in already_failed:
-            continue
+    computed_by_key = dict(cached_by_key)
+    error_by_key: dict[str, Exception] = {}
+    for record in uncached_representatives:
+        identity = identity_by_id[record["internal_id"]]
+        key = identity.identity_sha256
         try:
             h_vector: list[int] = []
             c_vector: list[int] = []
@@ -309,28 +361,66 @@ def _process_batch(
                 vector = h_vector + c_vector + fp_vector
             if len(vector) != MODE_FEATURE_DIMENSIONS[config.mode]:
                 raise RuntimeError(f"Feature dimension mismatch: {len(vector)}")
+            computed_by_key[key] = (vector, diagnostics)
+            feature_cache.put(key, identity.identity_smiles, vector, diagnostics)
+        except Exception as exc:
+            error_by_key[key] = exc
+
+    for key, group in groups.items():
+        identity = identity_by_id[group[0]["internal_id"]]
+        if key in error_by_key:
+            for record in group:
+                metadata.append(_failure(record, "FEATURE_ASSEMBLY", error_by_key[key]))
+            continue
+        vector, diagnostics = computed_by_key[key]
+        representative = group[0]
+        if needs_nmr and len(group) > 1:
+            representative_mol = Path(str(preparation_by_id[representative["internal_id"]].mol_path))
+            for record in group[1:]:
+                target_mol = mol_dir / f"{record['internal_id']}.mol"
+                if not target_mol.exists() and representative_mol.exists():
+                    shutil.copyfile(representative_mol, target_mol)
+                for source_dir in (raw_h, raw_c):
+                    source_csv = source_dir / f"{representative['internal_id']}.csv"
+                    target_csv = source_dir / f"{record['internal_id']}.csv"
+                    if source_csv.exists() and not target_csv.exists():
+                        shutil.copyfile(source_csv, target_csv)
+        for record in group:
             feature_rows.append({
                 "source_index": record["source_index"],
+                "record_id": record["record_id"],
                 "molecule_name": record["molecule_name"],
                 "label": record["label"],
+                "murcko_smiles": identity.murcko_smiles,
+                "murcko_id": identity.murcko_id,
                 "vector": vector,
             })
-            prepared_result = preparation_by_id.get(record["internal_id"])
             metadata.append({
                 "source_index": record["source_index"],
+                "record_id": record["record_id"],
                 "internal_id": record["internal_id"],
                 "molecule_name": record["molecule_name"],
                 "smiles": record["smiles"],
-                "canonical_smiles": prepared_result.canonical_smiles if prepared_result else None,
+                "canonical_smiles": identity.canonical_smiles,
+                "molecular_identity_smiles": identity.identity_smiles,
+                "molecular_identity_sha256": identity.identity_sha256,
+                "murcko_smiles": identity.murcko_smiles if config.include_murcko else None,
+                "murcko_id": identity.murcko_id if config.include_murcko else None,
                 "status": "SUCCESS",
                 "nmr_diagnostics": diagnostics,
                 "feature_sha256": hashlib.sha256(
                     json.dumps(vector, separators=(",", ":")).encode("ascii")
                 ).hexdigest(),
             })
-        except Exception as exc:
-            metadata.append(_failure(record, "FEATURE_ASSEMBLY", exc))
+            feature_cache.observe_record(
+                record_id=record["record_id"],
+                molecule_name=record["molecule_name"],
+                raw_smiles=record["smiles"],
+                label=record["label"],
+                identity_sha256=identity.identity_sha256,
+            )
     timings["features"] = time.perf_counter() - started
+    feature_rows.sort(key=lambda item: int(item["source_index"]))
     metadata.sort(key=lambda item: int(item["source_index"]))
     return feature_rows, metadata, timings
 
@@ -367,6 +457,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
         mode=config.mode,
         feature_contract=scientific["contract"],
         overwrite_output=config.overwrite_output,
+        include_murcko=config.include_murcko,
     )
     io_config = {"input": description.configuration, "output": writer.configuration()}
     identity = input_identity(config.input_path)
@@ -405,6 +496,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             "scientific_config": scientific,
             "scientific_config_sha256": object_sha256(scientific),
             "io_config": io_config,
+            "record_id_contract": RECORD_ID_CONTRACT,
             "operational_initial": {
                 "prep_workers": config.prep_workers,
                 "java_threads": config.java_threads,
@@ -413,6 +505,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
                 "java_lifecycle": config.java_lifecycle,
                 "max_attempts": config.max_attempts,
                 "retain_scientific_artifacts": config.retain_scientific_artifacts,
+                "include_murcko": config.include_murcko,
             },
             "created_at": utc_now(),
         }
@@ -434,6 +527,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
     os.environ["SPECTRAPRINTS_UNIFIED_PROFILE"] = "1"
     os.environ[predictor.JAVA_DIAGNOSTICS_DIR_ENV] = str(config.output_root / "diagnostics" / "java")
     scratch, owner_token = create_owned_scratch(config.temp_root, run_id)
+    feature_cache = ComputationCache(scratch / "molecular_feature_cache.sqlite")
     prep_pool = None
     batch_iterator = None
     total_started = time.perf_counter()
@@ -449,6 +543,15 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
         batch_iterator = reader.iter_batches(config.batch_size, start_index)
         for offset, selected in batch_iterator:
             _check_stop()
+            for record in selected:
+                row_identity = json.dumps(
+                    [record["molecule_name"], record["smiles"], record["label"]],
+                    ensure_ascii=False, allow_nan=False, separators=(",", ":"),
+                ).encode("utf-8")
+                record["record_id"] = (
+                    f"{hashlib.sha256(row_identity).hexdigest()[:16]}-"
+                    f"R{int(record['source_index']) + 1:012d}"
+                )
             last_error: Exception | None = None
             for batch_attempt in range(1, config.max_attempts + 1):
                 scratch_batch = scratch / f"batch_{batch_index:08d}_try_{batch_attempt:02d}"
@@ -456,7 +559,9 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
                     shutil.rmtree(scratch_batch)
                 scratch_batch.mkdir()
                 try:
-                    feature_rows, metadata, timings = _process_batch(selected, config, scratch_batch, prep_pool)
+                    feature_rows, metadata, timings = _process_batch(
+                        selected, config, scratch_batch, prep_pool, feature_cache
+                    )
                     writer.commit_batch(
                         batch_index,
                         feature_rows,
@@ -519,6 +624,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             "wall_time_seconds": wall,
             "molecules_per_second": (description.total_rows / wall if wall else None),
             "stage_timing_seconds": aggregate_timings,
+            "record_audit": feature_cache.audit(),
             "final_output": str(final),
             "final_output_sha256": file_sha256(final),
             "failures": str(failures),
@@ -555,6 +661,7 @@ def run_pipeline(config: RunConfig) -> dict[str, Any]:
             prep_pool.terminate()
             prep_pool.join()
         predictor.shutdown_persistent_java_processors("pipeline-finally")
+        feature_cache.close()
         cleanup_owned_scratch(config.temp_root, scratch, owner_token)
 
 
@@ -599,6 +706,7 @@ def resume_pipeline(output_root: Path, temp_root: Path | None = None, **override
         "output_db": Path(output_config["output_db"]) if output_config.get("output_db") else None,
         "output_table": output_config.get("output_table", "demiurge_features"),
         "metadata_table": output_config.get("metadata_table", "demiurge_metadata"),
+        "include_murcko": bool(initial.get("include_murcko", False)),
     }
     return run_pipeline(RunConfig(**values))
 
