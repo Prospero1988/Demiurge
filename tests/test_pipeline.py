@@ -11,7 +11,15 @@ from demiurge_bin.pipeline import RunConfig, read_status, resume_pipeline, run_p
 
 
 def write_input(path: Path, count: int = 2, invalid: bool = False) -> None:
-    rows = [(f"mol-{index}", "not-smiles" if invalid and index == count - 1 else "CCO", 5.0 + index) for index in range(count)]
+    valid_smiles = ("CCO", "CCN", "CCC")
+    rows = [
+        (
+            f"mol-{index}",
+            "not-smiles" if invalid and index == count - 1 else valid_smiles[index % len(valid_smiles)],
+            5.0 + index,
+        )
+        for index in range(count)
+    ]
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(["MOLECULE_NAME", "SMILES", "VALUE"])

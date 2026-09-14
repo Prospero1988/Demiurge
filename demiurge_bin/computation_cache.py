@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,8 @@ class ComputationCache:
 
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
+        self._artifacts = path.parent / "molecular_artifact_cache"
+        self._artifacts.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(path)
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA synchronous=FULL")
@@ -89,6 +92,43 @@ class ComputationCache:
 
     def close(self) -> None:
         self._connection.close()
+
+    def capture_artifacts(
+        self,
+        identity_sha256: str,
+        *,
+        mol_path: Path | None,
+        raw_h_path: Path | None,
+        raw_c_path: Path | None,
+    ) -> None:
+        destination = self._artifacts / identity_sha256
+        destination.mkdir(parents=True, exist_ok=True)
+        for name, source in (("molecule.mol", mol_path), ("1H.csv", raw_h_path), ("13C.csv", raw_c_path)):
+            if source is not None and source.is_file():
+                target = destination / name
+                if target.exists() and target.read_bytes() != source.read_bytes():
+                    raise RuntimeError("Molecular artifact cache replay differs")
+                if not target.exists():
+                    shutil.copyfile(source, target)
+
+    def restore_artifacts(
+        self,
+        identity_sha256: str,
+        internal_id: str,
+        *,
+        mol_directory: Path,
+        raw_h_directory: Path,
+        raw_c_directory: Path,
+    ) -> None:
+        source = self._artifacts / identity_sha256
+        for name, target in (
+            ("molecule.mol", mol_directory / f"{internal_id}.mol"),
+            ("1H.csv", raw_h_directory / f"{internal_id}.csv"),
+            ("13C.csv", raw_c_directory / f"{internal_id}.csv"),
+        ):
+            cached = source / name
+            if cached.is_file():
+                shutil.copyfile(cached, target)
 
     def observe_record(
         self,

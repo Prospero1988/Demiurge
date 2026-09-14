@@ -81,6 +81,7 @@ class RecordIdentityTests(unittest.TestCase):
                 temp_root=root / "scratch", label_column=3, prep_workers=1,
                 java_threads=2, java_heap="4G", batch_size=2,
                 java_lifecycle="persistent", include_murcko=True,
+                retain_scientific_artifacts=True,
             )
             with mock.patch(
                 "demiurge_bin.pipeline.predictor.run_java_batch_processor",
@@ -111,6 +112,10 @@ class RecordIdentityTests(unittest.TestCase):
             self.assertEqual(features[0], features[3])
             self.assertEqual(features[4], features[5])
             self.assertNotEqual(features[0], features[2])
+            retained = []
+            for batch in sorted((root / "out" / "batches").glob("batch_*")):
+                retained.extend((batch / "scientific_artifacts" / "raw_1h").glob("m*.csv"))
+            self.assertEqual(len(retained), 6)
 
 
 if __name__ == "__main__":

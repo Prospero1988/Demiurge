@@ -286,9 +286,7 @@ def _process_batch(
     cached_by_key: dict[str, tuple[list[int], dict[str, Any]]] = {}
     for key, group in groups.items():
         identity = identity_by_id[group[0]["internal_id"]]
-        cached = None if config.retain_scientific_artifacts else feature_cache.get(
-            key, identity.identity_smiles
-        )
+        cached = feature_cache.get(key, identity.identity_smiles)
         if cached is None:
             uncached_representatives.append(group[0])
         else:
@@ -363,6 +361,13 @@ def _process_batch(
                 raise RuntimeError(f"Feature dimension mismatch: {len(vector)}")
             computed_by_key[key] = (vector, diagnostics)
             feature_cache.put(key, identity.identity_smiles, vector, diagnostics)
+            if config.retain_scientific_artifacts:
+                feature_cache.capture_artifacts(
+                    key,
+                    mol_path=Path(str(preparation_by_id[record["internal_id"]].mol_path)) if needs_nmr else None,
+                    raw_h_path=raw_h / f"{record['internal_id']}.csv",
+                    raw_c_path=raw_c / f"{record['internal_id']}.csv",
+                )
         except Exception as exc:
             error_by_key[key] = exc
 
@@ -374,6 +379,12 @@ def _process_batch(
             continue
         vector, diagnostics = computed_by_key[key]
         representative = group[0]
+        if config.retain_scientific_artifacts and key in cached_by_key:
+            for record in group:
+                feature_cache.restore_artifacts(
+                    key, record["internal_id"], mol_directory=mol_dir,
+                    raw_h_directory=raw_h, raw_c_directory=raw_c,
+                )
         if needs_nmr and len(group) > 1:
             representative_mol = Path(str(preparation_by_id[representative["internal_id"]].mol_path))
             for record in group[1:]:
